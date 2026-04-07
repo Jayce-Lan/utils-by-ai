@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>国际象棋（修复可落子版）</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
+html,body{overflow-x:hidden;min-height:100vh}
+body{display:flex;flex-direction:column;align-items:center;background:#1a111a;color:#fff;padding:10px}
+
+.timer{display:flex;gap:15px;margin-bottom:10px;font-size:clamp(16px,5vw,24px);font-weight:bold;width:100%;justify-content:center}
+.timer-player{background:#222;padding:8px 12px;border-radius:8px;min-width:110px;text:center}
+.timer-player.active{background:#e63943;color:white}
+
+.status{margin:8px 0;font-size:clamp(16px,4vw,20px);color:#ffdd57;text-align:center}
+
+.board-container {
+  position:relative;
+  width:min(100%, 90vh);
+  max-width:560px;
+  aspect-ratio:1/1;
+  display:grid;
+  grid-template-columns:24px 1fr;
+  grid-template-rows:1fr 24px;
+}
+.chessboard{
+  grid-column:2;grid-row:1;
+  display:grid;
+  grid-template-columns:repeat(8,1fr);
+  grid-template-rows:repeat(8,1fr);
+  width:100%;height:100%;
+  border:3px solid #333;
+}
+.cell{
+  display:flex;align-items:center;justify-content:center;
+  font-size:clamp(20px,8vw,38px);
+  cursor:pointer;
+  color:#000!important;
+}
+.cell.white-piece{color:#fff!important}
+.cell.white{background:#f0d9b5}
+.cell.black{background:#b58863}
+.cell.selected{background:#7cfc6d}
+.cell.can-move{background:#5a92f8;border-radius:50%}
+.cell.can-capture{background:#ff5252}
+.cell.last-from{background:rgba(255,215,0,0.4)!important}
+.cell.last-to{background:rgba(255,215,0,0.6)!important}
+
+.rank-labels{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:space-around;align-items:center;font-size:clamp(12px,3vw,16px);font-weight:bold}
+.file-labels{grid-column:2;grid-row:2;display:flex;justify-content:space-around;align-items:center;font-size:clamp(12px,3vw,16px);font-weight:bold}
+
+.controls{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;position:relative;z-index:31}
+button{padding:8px 12px;font-size:clamp(14px,3.5vw,16px);border:none;border-radius:8px;background:#333;color:#fff;cursor:pointer}
+button:hover{background:#444}
+
+.captured{
+  display:flex;justify-content:space-between;
+  width:min(100%,560px);
+  padding:8px 10px;gap:10px;
+  margin-top:10px;
+}
+.captured-side{display:flex;align-items:center;gap:4px;font-size:22px}
+
+.promotion{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#222;padding:16px;border-radius:12px;display:flex;gap:8px;z-index:40}
+.promotion button{font-size:28px;width:60px;height:60px}
+
+.setup{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;padding:20px}
+.setup.hide{display:none}
+.setup h2{font-size:clamp(20px,6vw,28px);margin-bottom:20px}
+.setup select,.setup button{margin:6px;font-size:clamp(14px,4vw,16px);padding:10px;width:min(280px,90%)}
+
+.pause-overlay{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,0.6);display:none;justify-content:center;align-items:center;z-index:30;font-size:24px
+}
+.pause-overlay.show{display:flex}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;justify-content:center;align-items:center;z-index:999}
+.overlay.show{display:flex}
+.panel{background:#1a111a;padding:24px 32px;border-radius:16px;max-width:360px;width:90%;text-align:center}
+.panel h2{margin-bottom:16px;color:#ffdd57}
+.panel p{font-size:16px;line-height:1.6;margin:4px 0}
+.panel button{margin-top:20px;padding:10px 20px;background:#e63943;color:white;border:none;border-radius:8px}
+
+.hide{display:none}
+</style>
+</head>
+<body>
+
+<div class="pause-overlay" id="pauseOverlay">游戏已暂停</div>
+<div class="overlay" id="resultOverlay">
+  <div class="panel">
+    <h2>对局结束</h2>
+    <p id="resultText"></p>
+    <p id="reviewText"></p>
+    <button onclick="closeReview()">确定</button>
+  </div>
+</div>
+
+<div class="setup" id="setup">
+  <h2>选择难度</h2>
+  <select id="aiLevel">
+    <option value="100">100 - 完全新手</option>
+    <option value="200">200 - 初学者</option>
+    <option value="300">300 - 基本走法</option>
+    <option value="400">400 - 保护棋子</option>
+    <option value="500">500 - 入门水平</option>
+    <option value="600">600 - 简单战术</option>
+    <option value="700">700 - 中级入门</option>
+    <option value="800">800 - 中级</option>
+    <option value="900">900 - 中强</option>
+    <option value="1000" selected>1000 - 进阶</option>
+    <option value="1100">1100 - 业余强手</option>
+    <option value="1200">1200 - 稳健</option>
+    <option value="1300">1300 - 进攻强</option>
+    <option value="1400">1400 - 计算深</option>
+    <option value="1500">1500 - 准高手</option>
+    <option value="1600">1600 - 很强</option>
+    <option value="1700">1700 - 俱乐部水平</option>
+    <option value="1800">1800 - 地方高手</option>
+    <option value="1900">1900 - 非常强</option>
+    <option value="2000">2000 - 最强AI</option>
+  </select>
+  <select id="playerSide">
+    <option value="white">我执白</option>
+    <option value="black">我执黑</option>
+    <option value="random">随机</option>
+  </select>
+  <button id="startBtn">开始游戏</button>
+</div>
+
+<div class="timer">
+  <div class="timer-player" id="whiteTimer">白方 10:00</div>
+  <div class="timer-player" id="blackTimer">黑方 10:00</div>
+</div>
+<div class="status" id="status">白方回合</div>
+
+<div class="board-container">
+  <div class="rank-labels" id="rankLabels"></div>
+  <div class="chessboard" id="board"></div>
+  <div class="file-labels" id="fileLabels"></div>
+</div>
+
+<div class="controls">
+  <button id="restart">重新开始</button>
+  <button id="pauseBtn">暂停游戏</button>
+  <button id="flip">翻转棋盘</button>
+</div>
+
+<div class="captured">
+  <div class="captured-side" id="capturedWhite">白吃黑子：</div>
+  <div class="captured-side" id="capturedBlack">黑吃白子：</div>
+</div>
+
+<div class="promotion hide" id="promo">
+  <button data-p="Q">♕</button>
+  <button data-p="R">♖</button>
+  <button data-p="B">♗</button>
+  <button data-p="N">♘</button>
+</div>
+
+<script>
+const boardEl = document.getElementById('board');
+const rankLabelsEl = document.getElementById('rankLabels');
+const fileLabelsEl = document.getElementById('fileLabels');
+const whiteTimer = document.getElementById('whiteTimer');
+const blackTimer = document.getElementById('blackTimer');
+const statusEl = document.getElementById('status');
+const promoEl = document.getElementById('promo');
+const restartBtn = document.getElementById('restart');
+const flipBtn = document.getElementById('flip');
+const setupEl = document.getElementById('setup');
+const startBtn = document.getElementById('startBtn');
+const aiLevelEl = document.getElementById('aiLevel');
+const playerSideEl = document.getElementById('playerSide');
+const pauseBtn = document.getElementById('pauseBtn');
+const pauseOverlay = document.getElementById('pauseOverlay');
+const capturedWhiteEl = document.getElementById('capturedWhite');
+const capturedBlackEl = document.getElementById('capturedBlack');
+const resultOverlay = document.getElementById('resultOverlay');
+const resultText = document.getElementById('resultText');
+const reviewText = document.getElementById('reviewText');
+
+const PIECES = {
+  K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',
+  k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'
+};
+const START = [
+  'r','n','b','q','k','b','n','r',
+  'p','p','p','p','p','p','p','p',
+  '','','','','','','','',
+  '','','','','','','','',
+  '','','','','','','','',
+  '','','','','','','','',
+  'P','P','P','P','P','P','P','P',
+  'R','N','B','Q','K','B','N','R'
+];
+const SCORE = {P:10,N:30,B:30,R:50,Q:90,K:1000,p:-10,n:-30,b:-30,r:-50,q:-90,k:-1000};
+const files = ['a','b','c','d','e','f','g','h'];
+
+let board = [...START];
+let selected = null;
+let whiteTurn = true;
+let whiteTime = 600, blackTime = 600;
+let timer = null;
+let flipped = false;
+let castling = {K:true,Q:true,k:true,q:true};
+let enPassant = null;
+let promoPending = null;
+let aiLevel = 1000;
+let playerIsWhite = true;
+let aiThinking = false;
+let lastMove = {from:null,to:null};
+let isPaused = false;
+
+let capturedByWhite = [];
+let capturedByBlack = [];
+
+let scoreHistory = [];
+let playerMoves = [];
+let gameOver = false;
+
+// 修复1：翻转索引正确映射
+function realIndex(ui){
+  return flipped ? 63 - ui : ui;
+}
+function uiToReal(ui){
+  return flipped ? 63 - ui : ui;
+}
+function realToUi(i){
+  return flipped ? 63 - i : i;
+}
+
+function updateLabels(){
+  rankLabelsEl.innerHTML = '';
+  fileLabelsEl.innerHTML = '';
+  const rs = flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  const fs = flipped ? files.slice().reverse() : files;
+  rs.forEach(r=>{const d=document.createElement('div');d.textContent=r;rankLabelsEl.appendChild(d)});
+  fs.forEach(f=>{const d=document.createElement('div');d.textContent=f;fileLabelsEl.appendChild(d)});
+}
+
+function updateCapturedDisplay(){
+  capturedWhiteEl.innerHTML = '白吃黑子：'+capturedByWhite.map(c=>PIECES[c]||c).join(' ');
+  capturedBlackEl.innerHTML = '黑吃白子：'+capturedByBlack.map(c=>PIECES[c]||c).join(' ');
+}
+
+function startGame(){
+  board = [...START];
+  selected = null;
+  whiteTurn = true;
+  whiteTime = 600;
+  blackTime = 600;
+  castling = {K:true,Q:true,k:true,q:true};
+  enPassant = null;
+  promoPending = null;
+  aiThinking = false;
+  lastMove = {from:null,to:null};
+  capturedByWhite = [];
+  capturedByBlack = [];
+  isPaused = false;
+  gameOver = false;
+  scoreHistory = [];
+  playerMoves = [];
+
+  pauseOverlay.classList.remove('show');
+  pauseBtn.textContent = '暂停游戏';
+  statusEl.textContent = '白方回合';
+  promoEl.classList.add('hide');
+  clearInterval(timer);
+  updateCapturedDisplay();
+  startTimer();
+  updateLabels();
+  scoreHistory.push(evaluate(board));
+  render();
+
+  // 修复2：你执黑时AI自动先走
+  if(!playerIsWhite) setTimeout(aiMove,700);
+}
+
+startBtn.onclick = ()=>{
+  aiLevel = parseInt(aiLevelEl.value);
+  const s = playerSideEl.value;
+  playerIsWhite = s==='random' ? Math.random()>0.5 : s==='white';
+  flipped = !playerIsWhite;
+  setupEl.classList.add('hide');
+  startGame();
+};
+
+pauseBtn.onclick = ()=>{
+  isPaused = !isPaused;
+  if(isPaused){
+    pauseOverlay.classList.add('show');
+    pauseBtn.textContent = '继续游戏';
+    clearInterval(timer);
+  }else{
+    pauseOverlay.classList.remove('show');
+    pauseBtn.textContent = '暂停游戏';
+    clearInterval(timer);
+    startTimer();
+  }
+};
+
+function render(){
+  boardEl.innerHTML = '';
+  const legal = selected!==null && isPlayerTurn() ? getLegalMoves(selected) : [];
+  for(let ui=0;ui<64;ui++){
+    const i = uiToReal(ui);
+    const r = Math.floor(ui/8);
+    const c = document.createElement('div');
+    c.className = `cell ${(r+ui)%2?'white':'black'}`;
+    const p = board[i];
+    c.innerHTML = PIECES[p]||'';
+    if(p && p===p.toUpperCase()) c.classList.add('white-piece');
+    if(selected===i) c.classList.add('selected');
+    if(legal.includes(i)) c.classList.add(board[i]?'can-capture':'can-move');
+    if(lastMove.from===i) c.classList.add('last-from');
+    if(lastMove.to===i) c.classList.add('last-to');
+    c.onclick = ()=>handleClick(ui);
+    boardEl.appendChild(c);
+  }
+  updateTimers();
+}
+
+// 修复3：正确判断玩家回合
+function isPlayerTurn(){
+  return !isPaused && !aiThinking && !promoPending && (whiteTurn === playerIsWhite);
+}
+
+function handleClick(ui){
+  const i = uiToReal(ui);
+  if(!isPlayerTurn()||gameOver) return;
+  const p = board[i];
+  if(selected===null){
+    const mine = whiteTurn ? p===p.toUpperCase() : p===p.toLowerCase();
+    if(p&&mine){selected=i;render()}
+    return;
+  }
+  if(i===selected){selected=null;render();return}
+  const legal = getLegalMoves(selected);
+  if(!legal.includes(i)){selected=i;render();return}
+
+  const promo = (board[selected]==='P'&&Math.floor(i/8)===0)||(board[selected]==='p'&&Math.floor(i/8)===7);
+  if(promo){
+    promoPending={from:selected,to:i,isWhite:whiteTurn};
+    showPromo();
+    return;
+  }
+
+  const before = evaluate(board);
+  const cap = board[i];
+  if(cap){
+    whiteTurn ? capturedByWhite.push(cap) : capturedByBlack.push(cap);
+    updateCapturedDisplay();
+  }
+  lastMove={from:selected,to:i};
+  movePiece(selected,i);
+  selected=null;
+  const after = evaluate(board);
+  scoreHistory.push(after);
+  playerMoves.push({before,after});
+  whiteTurn = !whiteTurn;
+  checkGameOver();
+  render();
+  if(!gameOver) setTimeout(aiMove,700);
+}
+
+function aiMove(){
+  if(isPaused||whiteTurn===playerIsWhite||aiThinking||gameOver) return;
+  aiThinking=true;
+  const all=[];
+  for(let i=0;i<64;i++){
+    const p=board[i];
+    if(!p) continue;
+    const w=p===p.toUpperCase();
+    if(w===whiteTurn) getLegalMoves(i).forEach(t=>all.push({f:i,t:t}));
+  }
+  if(all.length===0){aiThinking=false;checkGameOver();return}
+  const sc = all.map(m=>{
+    const t=[...board];movePieceTemp(m.f,m.t,t);
+    const s=evaluate(t);undoTemp(m.f,m.t,board[m.f],t);
+    return {m,s:s+(Math.random()*2-1)*(2000-aiLevel)/1500*60};
+  });
+  sc.sort((a,b)=>whiteTurn?b.s-a.s:a.s-b.s);
+  const pick=sc[0].m;
+  const cap=board[pick.t];
+  if(cap){whiteTurn?capturedByWhite.push(cap):capturedByBlack.push(cap);updateCapturedDisplay()}
+  lastMove={from:pick.f,to:pick.t};
+  const isPro = (board[pick.f]==='P'&&Math.floor(pick.t/8)===0)||(board[pick.f]==='p'&&Math.floor(pick.t/8)===7);
+  if(isPro){movePiece(pick.f,pick.t);board[pick.t]=whiteTurn?'Q':'q'}
+  else movePiece(pick.f,pick.t);
+  scoreHistory.push(evaluate(board));
+  whiteTurn=!whiteTurn;
+  aiThinking=false;
+  checkGameOver();
+  render();
+}
+
+function evaluate(b){
+  return b.reduce((t,c)=>t+(SCORE[c]||0),0);
+}
+
+function movePiece(f,t){
+  const p=board[f];board[t]=p;board[f]='';
+  if(p==='K'||p==='k'){
+    p==='K'?(castling.K=castling.Q=false):(castling.k=castling.q=false);
+    if(Math.abs(t-f)===2){
+      if(t===62){board[63]='';board[61]='R'}
+      if(t===58){board[56]='';board[59]='R'}
+      if(t===6){board[7]='';board[5]='r'}
+      if(t===2){board[0]='';board[3]='r'}
+    }
+  }
+  if(p==='R'){f===56&&(castling.Q=false);f===63&&(castling.K=false)}
+  if(p==='r'){f===0&&(castling.q=false);f===7&&(castling.k=false)}
+  if(p==='P'||p==='p'){
+    if(Math.abs(f-t)===16) enPassant=f+(whiteTurn?-8:8);
+    else{
+      if(t===enPassant&&p==='P'){board[t+8]='';capturedByBlack.push('P');updateCapturedDisplay()}
+      if(t===enPassant&&p==='p'){board[t-8]='';capturedByWhite.push('p');updateCapturedDisplay()}
+      enPassant=null;
+    }
+  }
+}
+
+function showPromo(){
+  promoEl.classList.remove('hide');
+  promoEl.querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      const {from,to,isWhite}=promoPending;
+      const cap=board[to];
+      if(cap){isWhite?capturedByWhite.push(cap):capturedByBlack.push(cap);updateCapturedDisplay()}
+      lastMove={from:from,to:to};
+      movePiece(from,to);
+      board[to]=isWhite?b.dataset.p:b.dataset.p.toLowerCase();
+      promoPending=null;promoEl.classList.add('hide');selected=null;
+      const after=evaluate(board);scoreHistory.push(after);
+      playerMoves.push({before:scoreHistory[scoreHistory.length-2],after});
+      whiteTurn=!whiteTurn;
+      checkGameOver();
+      render();
+      if(!gameOver)setTimeout(aiMove,700);
+    }
+  });
+}
+
+function getRawMoves(i){
+  const p=board[i],r=Math.floor(i/8),f=i%8,m=[];
+  if(!p)return m;const w=p===p.toUpperCase();
+  const enemy=x=>x&&((w&&x===x.toLowerCase())||(!w&&x===x.toUpperCase()));
+  const empty=x=>!x;
+  switch(p.toUpperCase()){
+    case'P':
+      const d=w?-1:1;const f1=i+8*d;
+      if(f1>=0&&f1<64&&empty(board[f1]))m.push(f1);
+      if((w&&r===6||!w&&r===1)&&empty(board[f1])&&empty(board[i+16*d]))m.push(i+16*d);
+      [f-1,f+1].forEach(nf=>{
+        if(nf<0||nf>7)return;const t=i+8*d+nf-f;
+        if(enemy(board[t])||t===enPassant)m.push(t);
+      });
+      break;
+    case'N':[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr,df])=>{
+      const nr=r+dr,nf=f+df;if(nr<0||nr>7||nf<0||nf>7)return;
+      const t=nr*8+nf;if(empty(board[t])||enemy(board[t]))m.push(t);
+    });break;
+    case'B':[[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([dr,df])=>{
+      let nr=r+dr,nf=f+df;
+      while(nr>=0&&nr<8&&nf>=0&&nf<8){
+        const t=nr*8+nf;if(empty(board[t]))m.push(t);
+        else{enemy(board[t])&&m.push(t);break}
+        nr+=dr;nf+=df;
+      }
+    });break;
+    case'R':[[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,df])=>{
+      let nr=r+dr,nf=f+df;
+      while(nr>=0&&nr<8&&nf>=0&&nf<8){
+        const t=nr*8+nf;if(empty(board[t]))m.push(t);
+        else{enemy(board[t])&&m.push(t);break}
+        nr+=dr;nf+=df;
+      }
+    });break;
+    case'Q':[[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,df])=>{
+      let nr=r+dr,nf=f+df;
+      while(nr>=0&&nr<8&&nf>=0&&nf<8){
+        const t=nr*8+nf;if(empty(board[t]))m.push(t);
+        else{enemy(board[t])&&m.push(t);break}
+        nr+=dr;nf+=df;
+      }
+    });break;
+    case'K':[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr,df])=>{
+      const nr=r+dr,nf=f+df;if(nr<0||nr>7||nf<0||nf>7)return;
+      const t=nr*8+nf;if(empty(board[t])||enemy(board[t]))m.push(t);
+    });
+    if(w&&castling.K&&empty(board[61])&&empty(board[62])&&!isInCheck(board,true)&&!isSquareAttacked(61,true)&&!isSquareAttacked(62,true))m.push(62);
+    if(w&&castling.Q&&empty(board[57])&&empty(board[58])&&empty(board[59])&&!isInCheck(board,true)&&!isSquareAttacked(59,true)&&!isSquareAttacked(58,true))m.push(58);
+    if(!w&&castling.k&&empty(board[61])&&empty(board[62])&&!isInCheck(board,false)&&!isSquareAttacked(5,false)&&!isSquareAttacked(6,false))m.push(6);
+    if(!w&&castling.q&&empty(board[1])&&empty(board[2])&&empty(board[3])&&!isInCheck(board,false)&&!isSquareAttacked(3,false)&&!isSquareAttacked(2,false))m.push(2);
+    break;
+  }
+  return m;
+}
+
+function getLegalMoves(i){
+  return getRawMoves(i).filter(t=>{
+    const temp=[...board];movePieceTemp(i,t,temp);
+    const ok=!isInCheck(temp,whiteTurn);
+    undoTemp(i,t,board[i],temp);
+    return ok;
+  });
+}
+
+function movePieceTemp(f,t,a){a[t]=a[f];a[f]=''}
+function undoTemp(f,t,p,a){a[f]=p;a[t]=''}
+function findKing(b,w){return b.indexOf(w?'K':'k')}
+function isSquareAttacked(sq,w){const t=[...board];t[sq]=w?'K':'k';return isInCheck(t,w)}
+function isInCheck(b,w){const k=findKing(b,w);for(let i=0;i<64;i++){const p=b[i];if(!p)continue;const pw=p===p.toUpperCase();if(pw===w)continue;if(getRawMovesForBoard(i,b).includes(k))return 1}return 0}
+function getRawMovesForBoard(i,b){const p=b[i],r=Math.floor(i/8),f=i%8,m=[];if(!p)return m;const w=p===p.toUpperCase();const enemy=x=>x&&((w&&x===x.toLowerCase())||(!w&&x===x.toUpperCase()));const safe=x=>!x||enemy(x);switch(p.toUpperCase()){
+case'P':const d=w?-1:1;[f-1,f+1].forEach(nf=>{if(nf<0||nf>7)return;const t=i+8*d+nf-f;if(enemy(b[t]))m.push(t)});break;
+case'N':[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr,df])=>{const nr=r+dr,nf=f+df;if(nr<0||nr>7||nf<0||nf>7)return;const t=nr*8+nf;if(safe(b[t]))m.push(t)});break;
+case'B':[[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([dr,df])=>{let nr=r+dr,nf=f+df;while(nr>=0&&nr<8&&nf>=0&&nf<8){const t=nr*8+nf;if(safe(b[t])){m.push(t);if(enemy(b[t]))break}else break;nr+=dr;nf+=df}});break;
+case'R':[[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,df])=>{let nr=r+dr,nf=f+df;while(nr>=0&&nr<8&&nf>=0&&nf<8){const t=nr*8+nf;if(safe(b[t])){m.push(t);if(enemy(b[t]))break}else break;nr+=dr;nf+=df}});break;
+case'Q':[[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,df])=>{let nr=r+dr,nf=f+df;while(nr>=0&&nr<8&&nf>=0&&nf<8){const t=nr*8+nf;if(safe(b[t])){m.push(t);if(enemy(b[t]))break}else break;nr+=dr;nf+=df}});break;
+case'K':[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr,df])=>{const nr=r+dr,nf=f+df;if(nr<0||nr>7||nf<0||nf>7)return;const t=nr*8+nf;if(safe(b[t]))m.push(t)});break;}return m;}
+
+function hasLegalMoves(w){
+  for(let i=0;i<64;i++){const p=board[i];if(!p)continue;const pw=p===p.toUpperCase();if(pw!==w)continue;if(getLegalMoves(i).length>0)return 1}return 0
+}
+
+function checkGameOver(){
+  const ch=isInCheck(board,whiteTurn);
+  const any=hasLegalMoves(whiteTurn);
+  if(any)return;
+  gameOver=true;
+  clearInterval(timer);
+  let msg;
+  if(ch) msg=whiteTurn ? '黑方将死胜利！' : '白方将死胜利！';
+  else msg='困毙和棋';
+  statusEl.textContent=msg;
+  showReview(msg);
+}
+
+function showReview(result){
+  let excellent=0,good=0,ok=0,inacc=0,bad=0;
+  playerMoves.forEach(({before,after})=>{
+    const diff = playerIsWhite ? (after - before) : (before - after);
+    if(diff>=40) excellent++;
+    else if(diff>=15) good++;
+    else if(diff>=-10) ok++;
+    else if(diff>=-30) inacc++;
+    else bad++;
+  });
+  resultText.textContent=result;
+  reviewText.innerHTML=`
+    总步数：${playerMoves.length}<br>
+    🌟佳着：${excellent}　🙂好棋：${good}<br>
+    🟢普通：${ok}　⚠️漏招：${inacc}　❌坏着：${bad}
+  `;
+  resultOverlay.classList.add('show');
+}
+
+function closeReview(){
+  resultOverlay.classList.remove('show');
+}
+
+function startTimer(){
+  clearInterval(timer);
+  timer=setInterval(()=>{
+    if(isPaused||gameOver)return;
+    whiteTurn?whiteTime--:blackTime--;
+    if(whiteTime<=0){gameOver=true;clearInterval(timer);statusEl.textContent='黑方胜利（超时）';showReview('黑方胜利（超时）')}
+    if(blackTime<=0){gameOver=true;clearInterval(timer);statusEl.textContent='白方胜利（超时）';showReview('白方胜利（超时）')}
+    updateTimers();
+  },1000);
+}
+
+function updateTimers(){
+  whiteTimer.textContent=`白方 ${fmt(whiteTime)}`;
+  blackTimer.textContent=`黑方 ${fmt(blackTime)}`;
+  whiteTimer.classList.toggle('active',whiteTurn);
+  blackTimer.classList.toggle('active',!whiteTurn);
+}
+
+function fmt(s){
+  const m=Math.floor(s/60).toString().padStart(2,'0');
+  const sc=(s%60).toString().padStart(2,'0');
+  return `${m}:${sc}`;
+}
+
+restartBtn.onclick=()=>{setupEl.classList.remove('hide')};
+flipBtn.onclick=()=>{flipped=!flipped;render()};
+</script>
+</body>
+</html>

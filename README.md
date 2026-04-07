@@ -14,4 +14,4 @@
   
   - `chessV2.html` ：修复版，黑白方均有吃子显示，`@power by doubao.com`
   
-  
+  - `chessV3.html` ：终极版，在对局结束后有对局分析`@power by doubao.com`
