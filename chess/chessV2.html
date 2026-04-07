@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>国际象棋（最终完整版·吃子在最下方）</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
+html,body{overflow-x:hidden;min-height:100vh}
+body{display:flex;flex-direction:column;align-items:center;background:#1a1a1a;color:#fff;padding:10px}
+
+.timer{display:flex;gap:15px;margin-bottom:10px;font-size:clamp(16px,5vw,24px);font-weight:bold;width:100%;justify-content:center}
+.timer-player{background:#222;padding:8px 12px;border-radius:8px;min-width:110px;text-align:center}
+.timer-player.active{background:#e63946;color:white}
+
+.status{margin:8px 0;font-size:clamp(16px,4vw,20px);color:#ffdd57;text-align:center}
+
+.board-container {
+  position: relative;
+  width: min(100%, 90vh);
+  max-width:560px;
+  aspect-ratio:1/1;
+  display:grid;
+  grid-template-columns:24px 1fr;
+  grid-template-rows:1fr 24px;
+}
+
+.chessboard{
+  grid-column:2;
+  grid-row:1;
+  display:grid;
+  grid-template-columns:repeat(8,1fr);
+  grid-template-rows:repeat(8,1fr);
+  width:100%;
+  height:100%;
+  border:3px solid #333;
+}
+
+.cell{
+  display:flex;align-items:center;justify-content:center;
+  font-size:clamp(20px,8vw,38px);
+  cursor:pointer;
+  position:relative;
+  color:#000 !important;
+}
+.cell.white-piece {
+  color:#fff !important;
+}
+.cell.white{background:#f0d9b5}
+.cell.black{background:#b58863}
+.cell.selected{background:#7cfc6d}
+.cell.can-move{background:#5a92f8;border-radius:50%}
+.cell.can-capture{background:#ff5252}
+.cell.last-from{background:rgba(255,215,0,0.4) !important}
+.cell.last-to{background:rgba(255,215,0,0.6) !important}
+
+.rank-labels {
+  grid-column:1;grid-row:1;
+  display:flex;flex-direction:column;justify-content:space-around;align-items:center;
+  font-size:clamp(12px,3vw,16px);font-weight:bold;padding-right:4px;
+}
+.file-labels {
+  grid-column:2;grid-row:2;
+  display:flex;justify-content:space-around;align-items:center;
+  font-size:clamp(12px,3vw,16px);font-weight:bold;padding-top:4px;
+}
+
+.controls{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;position:relative;z-index:31;}
+button{padding:8px 12px;font-size:clamp(14px,3.5vw,16px);border:none;border-radius:8px;background:#333;color:#fff;cursor:pointer;}
+button:hover{background:#444}
+
+/* 被吃棋子展示 —— 移到最底部，不挤压棋盘 */
+.captured{
+  display:flex;
+  justify-content:space-between;
+  width:min(100%, 560px);
+  padding:8px 10px;
+  gap:10px;
+  min-height:40px;
+  margin-top: 10px;
+}
+.captured-side{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  font-size:22px;
+  min-height:30px;
+}
+
+.promotion{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#222;padding:16px;border-radius:12px;display:flex;gap:8px;z-index:40;}
+.promotion button{font-size:clamp(20px,10vw,28px);width:clamp(50px,20vw,60px);height:clamp(50px,20vw,60px)}
+
+.setup{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;padding:20px}
+.setup.hide{display:none}
+.setup h2{font-size:clamp(20px,6vw,28px);margin-bottom:20px;text-align:center}
+.setup select,.setup button{margin:6px;font-size:clamp(14px,4vw,16px);padding:10px 14px;width:min(280px,90%)}
+
+.pause-overlay{
+  position:fixed;
+  top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,0.6);
+  display:none;
+  justify-content:center;
+  align-items:center;
+  z-index:30;
+  font-size:24px;
+  color:#fff;
+}
+.pause-overlay.show{display:flex;}
+
+.hide{display:none}
+</style>
+</head>
+<body>
+
+<div class="pause-overlay" id="pauseOverlay">游戏已暂停</div>
+
+<div class="setup" id="setup">
+  <h2>选择难度</h2>
+  <select id="aiLevel">
+    <option value="100">100 - 完全新手</option>
+    <option value="200">200 - 初学者</option>
+    <option value="300">300 - 基本走法</option>
+    <option value="400">400 - 保护棋子</option>
+    <option value="500">500 - 入门水平</option>
+    <option value="600">600 - 简单战术</option>
+    <option value="700">700 - 中级入门</option>
+    <option value="800">800 - 中级</option>
+    <option value="900">900 - 中强</option>
+    <option value="1000" selected>1000 - 进阶</option>
+    <option value="1100">1100 - 业余强手</option>
+    <option value="1200">1200 - 稳健</option>
+    <option value="1300">1300 - 进攻强</option>
+    <option value="1400">1400 - 计算深</option>
+    <option value="1500">1500 - 准高手</option>
+    <option value="1600">1600 - 很强</option>
+    <option value="1700">1700 - 俱乐部水平</option>
+    <option value="1800">1800 - 地方高手</option>
+    <option value="1900">1900 - 非常强</option>
+    <option value="2000">2000 - 最强AI</option>
+  </select>
+
+  <select id="playerSide">
+    <option value="white">我执白</option>
+    <option value="black">我执黑</option>
+    <option value="random">随机</option>
+  </select>
+
+  <button id="startBtn">开始游戏</button>
+</div>
+
+<div class="timer">
+  <div class="timer-player" id="whiteTimer">白方 10:00</div>
+  <div class="timer-player" id="blackTimer">黑方 10:00</div>
+</div>
+<div class="status" id="status">白方回合</div>
+
+<div class="board-container">
+  <div class="rank-labels" id="rankLabels"></div>
+  <div class="chessboard" id="board"></div>
+  <div class="file-labels" id="fileLabels"></div>
+</div>
+
+<!-- 按钮区 -->
+<div class="controls">
+  <button id="restart">重新开始</button>
+  <button id="pauseBtn">暂停游戏</button>
+  <button id="flip">翻转棋盘</button>
+</div>
+
+<!-- 被吃棋子放在 最底部，按钮之后 -->
+<div class="captured">
+  <div class="captured-side" id="capturedWhite">白吃黑子：</div>
+  <div class="captured-side" id="capturedBlack">黑吃白子：</div>
+</div>
+
+<div class="promotion hide" id="promo">
+  <button data-p="Q">♕</button>
+  <button data-p="R">♖</button>
+  <button data-p="B">♗</button>
+  <button data-p="N">♘</button>
+</div>
+
+<script>
+const boardEl = document.getElementById('board');
+const rankLabelsEl = document.getElementById('rankLabels');
+const fileLabelsEl = document.getElementById('fileLabels');
+const whiteTimer = document.getElementById('whiteTimer');
+const blackTimer = document.getElementById('blackTimer');
+const statusEl = document.getElementById('status');
+const promoEl = document.getElementById('promo');
+const restartBtn = document.getElementById('restart');
+const flipBtn = document.getElementById('flip');
+const setupEl = document.getElementById('setup');
+const startBtn = document.getElementById('startBtn');
+const aiLevelEl = document.getElementById('aiLevel');
+const playerSideEl = document.getElementById('playerSide');
+const pauseBtn = document.getElementById('pauseBtn');
+const pauseOverlay = document.getElementById('pauseOverlay');
+const capturedWhiteEl = document.getElementById('capturedWhite');
+const capturedBlackEl = document.getElementById('capturedBlack');
+
+const PIECES = {
+  K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',
+  k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'
+};
+const START = [
+  'r','n','b','q','k','b','n','r',
+  'p','p','p','p','p','p','p','p',
+  '','','','','','','','',
+  '','','','','','','','',
+  '','','','','','','','',
+  '','','','','','','','',
+  'P','P','P','P','P','P','P','P',
+  'R','N','B','Q','K','B','N','R'
+];
+const SCORE = {P:10,N:30,B:30,R:50,Q:90,K:1000,p:-10,n:-30,b:-30,r:-50,q:-90,k:-1000};
+const files = ['a','b','c','d','e','f','g','h'];
+
+let board = [...START];
+let selected = null;
+let whiteTurn = true;
+let whiteTime = 600, blackTime = 600;
+let timer = null;
+let flipped = false;
+let castling = {K:true,Q:true,k:true,q:true};
+let enPassant = null;
+let promoPending = null;
+let aiLevel = 1000;
+let playerIsWhite = true;
+let aiThinking = false;
+let lastMove = {from: null, to: null};
+let isPaused = false;
+
+// 被吃棋子记录
+let capturedByWhite = [];
+let capturedByBlack = [];
+
+function realIndex(i) {
+  return flipped ? 63 - i : i;
+}
+
+function updateLabels() {
+  rankLabelsEl.innerHTML = '';
+  fileLabelsEl.innerHTML = '';
+  const ranks = flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  const filesToShow = flipped ? [...files].reverse() : files;
+  ranks.forEach(r => {
+    const d = document.createElement('div');
+    d.textContent = r;
+    rankLabelsEl.appendChild(d);
+  });
+  filesToShow.forEach(f => {
+    const d = document.createElement('div');
+    d.textContent = f;
+    fileLabelsEl.appendChild(d);
+  });
+}
+
+// 更新被吃棋子显示
+function updateCapturedDisplay() {
+  capturedWhiteEl.innerHTML = '白吃黑子：' + capturedByWhite.map(c => PIECES[c] || c).join(' ');
+  capturedBlackEl.innerHTML = '黑吃白子：' + capturedByBlack.map(c => PIECES[c] || c).join(' ');
+}
+
+function startGame(){
+  board = [...START];
+  selected = null;
+  whiteTurn = true;
+  whiteTime = 600;
+  blackTime = 600;
+  castling = {K:true,Q:true,k:true,q:true};
+  enPassant = null;
+  promoPending = null;
+  aiThinking = false;
+  lastMove = {from:null,to:null};
+  capturedByWhite = [];
+  capturedByBlack = [];
+  isPaused = false;
+
+  pauseOverlay.classList.remove('show');
+  pauseBtn.textContent = '暂停游戏';
+  statusEl.textContent = '白方回合';
+  promoEl.classList.add('hide');
+  clearInterval(timer);
+  updateCapturedDisplay();
+  startTimer();
+  updateLabels();
+  render();
+
+  if (!playerIsWhite) {
+    setTimeout(aiMove, 700);
+  }
+}
+
+startBtn.onclick = ()=>{
+  aiLevel = parseInt(aiLevelEl.value);
+  const side = playerSideEl.value;
+  if(side === 'random'){
+    playerIsWhite = Math.random() > 0.5;
+  } else {
+    playerIsWhite = side === 'white';
+  }
+  flipped = !playerIsWhite;
+  setupEl.classList.add('hide');
+  startGame();
+};
+
+pauseBtn.onclick = () => {
+  isPaused = !isPaused;
+  if(isPaused){
+    pauseOverlay.classList.add('show');
+    pauseBtn.textContent = '继续游戏';
+    clearInterval(timer);
+  } else {
+    pauseOverlay.classList.remove('show');
+    pauseBtn.textContent = '暂停游戏';
+    clearInterval(timer);
+    startTimer();
+  }
+};
+
+function render(){
+  boardEl.innerHTML = '';
+  const arr = board;
+  const legal = selected !== null && isPlayerTurn() ? getLegalMoves(selected) : [];
+
+  for(let ui=0;ui<64;ui++){
+    const i = realIndex(ui);
+    const row = Math.floor(ui/8);
+    const cell = document.createElement('div');
+    cell.className = `cell ${(row+ui)%2?'white':'black'}`;
+    cell.dataset.ui = ui;
+    const piece = arr[i];
+    cell.innerHTML = PIECES[piece]||'';
+
+    if (piece && piece === piece.toUpperCase()) {
+      cell.classList.add('white-piece');
+    }
+
+    if(selected === i) cell.classList.add('selected');
+    if(legal.includes(i)){
+      cell.classList.add(board[i] ? 'can-capture' : 'can-move');
+    }
+    if(lastMove.from === i) cell.classList.add('last-from');
+    if(lastMove.to === i) cell.classList.add('last-to');
+
+    cell.onclick = ()=>handleClick(ui);
+    boardEl.appendChild(cell);
+  }
+  updateTimers();
+}
+
+function isPlayerTurn(){
+  return !isPaused && !aiThinking && !promoPending && (whiteTurn === playerIsWhite);
+}
+
+function handleClick(ui){
+  const i = realIndex(ui);
+  if(!isPlayerTurn()) return;
+
+  const p = board[i];
+  if(selected === null){
+    const isMine = whiteTurn ? (p === p.toUpperCase()) : (p === p.toLowerCase());
+    if(p && isMine) {
+      selected = i;
+      render();
+    }
+  }else{
+    if(i === selected){
+      selected = null;
+      render();
+      return;
+    }
+    const legal = getLegalMoves(selected);
+    if(!legal.includes(i)){
+      selected = i;
+      render();
+      return;
+    }
+
+    const isPromo = (board[selected]==='P'&&Math.floor(i/8)===0) || (board[selected]==='p'&&Math.floor(i/8)===7);
+    if(isPromo){
+      promoPending = {from:selected, to:i, isWhite:whiteTurn};
+      showPromo();
+    }else{
+      // 吃子记录
+      const captured = board[i];
+      if(captured){
+        if(whiteTurn){
+          capturedByWhite.push(captured);
+        }else{
+          capturedByBlack.push(captured);
+        }
+        updateCapturedDisplay();
+      }
+
+      lastMove = {from:selected, to:i};
+      movePiece(selected,i);
+      selected = null;
+      whiteTurn = !whiteTurn;
+      checkGameOver();
+      render();
+      setTimeout(aiMove,700);
+    }
+  }
+}
+
+function aiMove(){
+  if(isPaused || whiteTurn === playerIsWhite || aiThinking) return;
+  aiThinking = true;
+
+  const allMoves = [];
+  for(let i=0;i<64;i++){
+    const p=board[i];
+    if(!p) continue;
+    const isW = p === p.toUpperCase();
+    if(isW === whiteTurn){
+      const legal = getLegalMoves(i);
+      legal.forEach(to=>allMoves.push({f:i,t:to}));
+    }
+  }
+
+  if(allMoves.length===0) { aiThinking=false; checkGameOver(); return; }
+
+  const scored = allMoves.map(m=>{
+    const temp = [...board];
+    movePieceTemp(m.f,m.t,temp);
+    let s = evaluate(temp);
+    undoTemp(m.f,m.t,board[m.f],temp);
+    const chaos = (2000 - aiLevel)/1500;
+    s += (Math.random()*2-1)*chaos*60;
+    return {m,s};
+  });
+
+  scored.sort((a,b)=>whiteTurn ? b.s-a.s : a.s-b.s);
+  const pick = scored[0].m;
+
+  // AI 吃子记录
+  const captured = board[pick.t];
+  if(captured){
+    if(whiteTurn){
+      capturedByWhite.push(captured);
+    }else{
+      capturedByBlack.push(captured);
+    }
+    updateCapturedDisplay();
+  }
+
+  lastMove = {from:pick.f, to:pick.t};
+  const isPromo = (board[pick.f]==='P'&&Math.floor(pick.t/8)===0)||(board[pick.f]==='p'&&Math.floor(pick.t/8)===7);
+  if(isPromo){
+    movePiece(pick.f,pick.t);
+    board[pick.t] = whiteTurn ? 'Q' : 'q';
+  }else{
+    movePiece(pick.f,pick.t);
+  }
+
+  whiteTurn = !whiteTurn;
+  aiThinking = false;
+  checkGameOver();
+  render();
+}
+
+function evaluate(b){
+  let s=0;
+  b.forEach(c=>{if(c&&SCORE[c])s+=SCORE[c]});
+  return s;
+}
+
+function movePiece(from,to){
+  const p=board[from]; board[to]=p; board[from]='';
+  if(p==='K'||p==='k'){
+    if(p==='K'){castling.K=false;castling.Q=false}else{castling.k=false;castling.q=false}
+    if(Math.abs(to-from)===2){
+      if(to===62){board[63]='';board[61]='R'}
+      if(to===58){board[56]='';board[59]='R'}
+      if(to===6){board[7]='';board[5]='r'}
+      if(to===2){board[0]='';board[3]='r'}
+    }
+  }
+  if(p==='R'){if(from===56)castling.Q=false;if(from===63)castling.K=false}
+  if(p==='r'){if(from===0)castling.q=false;if(from===7)castling.k=false}
+  if(p==='P'||p==='p'){
+    if(Math.abs(from-to)===16) enPassant=from+(whiteTurn?-8:8);
+    else{
+      if(to===enPassant&&p==='P'){ board[to+8]=''; capturedByBlack.push('P'); updateCapturedDisplay(); }
+      if(to===enPassant&&p==='p'){ board[to-8]=''; capturedByWhite.push('p'); updateCapturedDisplay(); }
+      enPassant=null;
+    }
+  }
+}
+
+function showPromo(){
+  promoEl.classList.remove('hide');
+  promoEl.querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      const {from,to,isWhite}=promoPending;
+      const captured = board[to];
+      if(captured){
+        isWhite ? capturedByWhite.push(captured) : capturedByBlack.push(captured);
+        updateCapturedDisplay();
+      }
+      lastMove = {from:from,to:to};
+      movePiece(from,to);
+      board[to]=isWhite?b.dataset.p:b.dataset.p.toLowerCase();
+      promoPending=null;
+      promoEl.classList.add('hide');
+      selected=null;
+      whiteTurn=!whiteTurn;
+      checkGameOver();
+      render();
+      setTimeout(aiMove,700);
+    }
+  });
+}
+
+function getRawMoves(i){
+  const p=board[i],r=Math.floor(i/8),c=i%8,m=[];if(!p)return m;
+  const isW=p===p.toUpperCase();
+  const isE=x=>x&&((isW&&x===x.toLowerCase())||(!isW&&x===x.toUpperCase()));
+  const isEmpty=x=>!x;
+  switch(p.toUpperCase()){
+    case'P':
+      const d=isW?-1:1;const f1=i+8*d;
+      if(f1>=0&&f1<64&&isEmpty(board[f1]))m.push(f1);
+      if((isW&&r===6||!isW&&r===1)&&isEmpty(board[f1])&&isEmpty(board[i+16*d]))m.push(i+16*d);
+      [c-1,c+1].forEach(nc=>{if(nc<0||nc>7)return;const t=i+8*d+nc-c;if(isE(board[t])||t===enPassant)m.push(t)});
+      break;
+    case'N':[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr,dc])=>{
+      const nr=r+dr,nc=c+dc;if(nr<0||nr>7||nc<0||nc>7)return;const t=nr*8+nc;if(isEmpty(board[t])||isE(board[t]))m.push(t)});
+      break;
+    case'B':[[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([dr,dc])=>{
+      let nr=r+dr,nc=c+dc;while(nr>=0&&nr<8&&nc>=0&&nc<8){const t=nr*8+nc;if(isEmpty(board[t])){m.push(t)}else{if(isE(board[t]))m.push(t);break}nr+=dr;nc+=dc}});
+      break;
+    case'R':[[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc])=>{
+      let nr=r+dr,nc=c+dc;while(nr>=0&&nr<8&&nc>=0&&nc<8){const t=nr*8+nc;if(isEmpty(board[t])){m.push(t)}else{if(isE(board[t]))m.push(t);break}nr+=dr;nc+=dc}});
+      break;
+    case'Q':[[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc])=>{
+      let nr=r+dr,nc=c+dc;while(nr>=0&&nr<8&&nc>=0&&nc<8){const t=nr*8+nc;if(isEmpty(board[t])){m.push(t)}else{if(isE(board[t]))m.push(t);break}nr+=dr;nc+=dc}});
+      break;
+    case'K':[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr,dc])=>{
+      const nr=r+dr,nc=c+dc;if(nr<0||nr>7||nc<0||nc>7)return;const t=nr*8+nc;if(isEmpty(board[t])||isE(board[t]))m.push(t)});
+      if(isW&&castling.K&&isEmpty(board[61])&&isEmpty(board[62])&&!isInCheck(board,true)&&!isSquareAttacked(61,true)&&!isSquareAttacked(62,true))m.push(62);
+      if(isW&&castling.Q&&isEmpty(board[57])&&isEmpty(board[58])&&isEmpty(board[59])&&!isInCheck(board,true)&&!isSquareAttacked(59,true)&&!isSquareAttacked(58,true))m.push(58);
+      if(!isW&&castling.k&&isEmpty(board[61])&&isEmpty(board[62])&&!isInCheck(board,false)&&!isSquareAttacked(5,false)&&!isSquareAttacked(6,false))m.push(6);
+      if(!isW&&castling.q&&isEmpty(board[1])&&isEmpty(board[2])&&isEmpty(board[3])&&!isInCheck(board,false)&&!isSquareAttacked(3,false)&&!isSquareAttacked(2,false))m.push(2);
+      break;
+  }
+  return m;
+}
+
+function getLegalMoves(i){
+  return getRawMoves(i).filter(t=>{
+    const temp=[...board];movePieceTemp(i,t,temp);const ok=!isInCheck(temp,whiteTurn);undoTemp(i,t,board[i],temp);return ok;
+  });
+}
+
+function movePieceTemp(f,t,a){a[t]=a[f];a[f]=''}
+function undoTemp(f,t,p,a){a[f]=p;a[t]=''}
+function findKing(b,w){return b.indexOf(w?'K':'k')}
+function isSquareAttacked(sq,w){const t=[...board];t[sq]=w?'K':'k';return isInCheck(t,w)}
+function isInCheck(b,w){const k=findKing(b,w);for(let i=0;i<64;i++){const p=b[i];if(!p)continue;const pw=p===p.toUpperCase();if(pw===w)continue;if(getRawMovesForBoard(i,b).includes(k))return 1;}return 0}
+function getRawMovesForBoard(i,b){const p=b[i],r=Math.floor(i/8),c=i%8,m=[];if(!p)return m;const isW=p===p.toUpperCase();const isE=x=>x&&((isW&&x===x.toLowerCase())||(!isW&&x===x.toUpperCase()));const isF=x=>!x||isE(x);switch(p.toUpperCase()){
+case'P':const d=isW?-1:1;[c-1,c+1].forEach(nc=>{if(nc<0||nc>7)return;const t=i+8*d+nc-c;if(isE(b[t]))m.push(t)});break;
+case'N':[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr,dc])=>{const nr=r+dr,nc=c+dc;if(nr<0||nr>7||nc<0||nc>7)return;const t=nr*8+nc;if(isF(b[t]))m.push(t)});break;
+case'B':[[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([dr,dc])=>{let nr=r+dr,nc=c+dc;while(nr>=0&&nr<8&&nc>=0&&nc<8){const t=nr*8+nc;if(isF(b[t])){m.push(t);if(isE(b[t]))break}else break;nr+=dr;nc+=dc}});break;
+case'R':[[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc])=>{let nr=r+dr,nc=c+dc;while(nr>=0&&nr<8&&nc>=0&&nc<8){const t=nr*8+nc;if(isF(b[t])){m.push(t);if(isE(b[t]))break}else break;nr+=dr;nc+=dc}});break;
+case'Q':[[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc])=>{let nr=r+dr,nc=c+dc;while(nr>=0&&nr<8&&nc>=0&&nc<8){const t=nr*8+nc;if(isF(b[t])){m.push(t);if(isE(b[t]))break}else break;nr+=dr;nc+=dc}});break;
+case'K':[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr,dc])=>{const nr=r+dr,nc=c+dc;if(nr<0||nr>7||nc<0||nc>7)return;const t=nr*8+nc;if(isF(b[t]))m.push(t)});break;}return m;}
+function hasLegalMoves(w){for(let i=0;i<64;i++){const p=board[i];if(!p)continue;const pw=p===p.toUpperCase();if(pw!==w)continue;if(getLegalMoves(i).length)return 1;}return 0}
+
+function checkGameOver(){
+  const ch=isInCheck(board,whiteTurn);
+  const any=hasLegalMoves(whiteTurn);
+  if(!any){
+    clearInterval(timer);
+    statusEl.textContent=ch?(whiteTurn?'黑方将死胜利':'白方将死胜利'):'困毙和棋';
+  }else{
+    statusEl.textContent=whiteTurn?'白方回合':'黑方回合';
+  }
+}
+
+function startTimer(){
+  clearInterval(timer);
+  timer = setInterval(()=>{
+    if(isPaused) return;
+    whiteTurn ? whiteTime-- : blackTime--;
+    if(whiteTime<=0){clearInterval(timer);statusEl.textContent='黑方胜利（超时）'}
+    if(blackTime<=0){clearInterval(timer);statusEl.textContent='白方胜利（超时）'}
+    updateTimers();
+  },1000);
+}
+
+function updateTimers(){
+  whiteTimer.textContent=`白方 ${fmt(whiteTime)}`;
+  blackTimer.textContent=`黑方 ${fmt(blackTime)}`;
+  whiteTimer.classList.toggle('active',whiteTurn);
+  blackTimer.classList.toggle('active',!whiteTurn);
+}
+
+function fmt(s){
+  const m=Math.floor(s/60).toString().padStart(2,'0');
+  const sc=(s%60).toString().padStart(2,'0');
+  return `${m}:${sc}`;
+}
+
+restartBtn.onclick=()=>{setupEl.classList.remove('hide')};
+flipBtn.onclick=()=>{flipped=!flipped;render()};
+</script>
+</body>
+</html>
