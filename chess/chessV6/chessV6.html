@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>国际象棋 - 离线版</title>
     
-    <!-- 本地离线资源 -->
     <link rel="stylesheet" href="chessboard-1.0.0.min.css">
     <script src="jquery-3.6.0.min.js"></script>
     <script src="chess.min.js"></script>
@@ -32,7 +31,7 @@
             font-size: 20px; 
             font-weight: bold; 
             margin: 15px auto; 
-            max-width: 500px;
+            max-width: 520px;
         }
         .timer { 
             padding: 10px 20px; 
@@ -89,19 +88,11 @@
     
     <div id="board"></div>
 
-    <!-- 吃子显示 -->
     <div class="captured">
-        <div>
-            <strong>黑方吃子：</strong>
-            <div class="captured-box" id="blackCaptured"></div>
-        </div>
-        <div>
-            <strong>白方吃子：</strong>
-            <div class="captured-box" id="whiteCaptured"></div>
-        </div>
+        <div><strong>黑方吃子：</strong><div class="captured-box" id="blackCaptured"></div></div>
+        <div><strong>白方吃子：</strong><div class="captured-box" id="whiteCaptured"></div></div>
     </div>
 
-    <!-- 控制选项放在棋盘下方 -->
     <div class="controls">
         <label>你的颜色: 
             <select id="playerColor">
@@ -109,11 +100,9 @@
                 <option value="b">黑棋 (上方)</option>
             </select>
         </label>
-        
         <label>每方时间 (分钟): 
             <input type="number" id="timeLimit" value="10" min="1" max="60" style="width:70px;">
         </label>
-        
         <label>电脑难度 (ELO): 
             <select id="difficulty">
                 <option value="100">100 (极弱)</option>
@@ -127,7 +116,6 @@
                 <option value="2500">2500 (专家)</option>
             </select>
         </label>
-        
         <br><br>
         <button onclick="startNewGame()">开始新游戏</button>
         <button onclick="togglePause()">暂停 / 继续</button>
@@ -142,43 +130,33 @@
         let whiteCaptured = [];
         let blackCaptured = [];
 
-        const difficultyMap = {
-            100: 1, 400: 1, 700: 2, 1000: 2,
-            1300: 3, 1600: 3, 1900: 4, 2200: 4, 2500: 5
-        };
-
+        const difficultyMap = {100:1,400:1,700:2,1000:2,1300:3,1600:3,1900:4,2200:4,2500:5};
         const pieceValueToImg = { p: 'P', r: 'R', n: 'N', b: 'B', q: 'Q', k: 'K' };
 
-        function initBoard() {
+        function initBoard(flipBoard = false) {
             const config = {
                 draggable: true,
                 dropOffBoard: 'snapback',
-                sparePieces: false,
-                // pieceTheme: 'img/chesspieces/wikipedia/{piece}.png',
                 pieceTheme: 'img/chesspieces/wikipedia/{piece}.png',
                 onDrop: handleMove,
-                onSnapEnd: onSnapEnd,
-                onDragStart: onDragStart
+                onSnapEnd: () => board.position(game.fen()),
+                onDragStart: (source, piece) => {
+                    if (isPaused || game.turn() !== playerColor) return false;
+                }
             };
             board = Chessboard('board', config);
-        }
-
-        function onDragStart(source, piece) {
-            if (isPaused || game.turn() !== playerColor) return false;
-            if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
-                (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
-                return false;
+            
+            // 如果需要翻转，立即翻转并刷新位置
+            if (flipBoard) {
+                board.flip();
             }
-        }
-
-        function onSnapEnd() {
-            board.position(game.fen());
         }
 
         function startNewGame() {
             game = new Chess();
             playerColor = document.getElementById('playerColor').value;
             const minutes = parseInt(document.getElementById('timeLimit').value) || 10;
+            
             timeLeft = { w: minutes * 60, b: minutes * 60 };
             whiteCaptured = [];
             blackCaptured = [];
@@ -186,12 +164,15 @@
 
             updateCapturedDisplay();
             updateTimers();
-            initBoard();
+
+            // 关键修复：先初始化棋盘，再设置位置和翻转
+            const needFlip = (playerColor === 'b');
+            initBoard(needFlip);
             
-            // 选择黑棋时翻转棋盘
-            if (playerColor === 'b') {
-                board.flip();
-            }
+            // 强制刷新棋子显示
+            setTimeout(() => {
+                board.position(game.fen(), false);
+            }, 50);
 
             document.getElementById('status').textContent = '游戏开始 - ' + (playerColor === 'w' ? '你执白' : '你执黑');
             
@@ -205,13 +186,8 @@
 
         function handleMove(source, target) {
             if (isPaused || game.turn() !== playerColor) return 'snapback';
-
-            const move = game.move({
-                from: source,
-                to: target,
-                promotion: 'q'
-            });
-
+            
+            const move = game.move({from: source, to: target, promotion: 'q'});
             if (move === null) return 'snapback';
 
             if (move.captured) {
@@ -233,15 +209,13 @@
 
         function computerMove() {
             if (game.game_over() || isPaused) return;
-            
-            const difficulty = parseInt(document.getElementById('difficulty').value);
-            const depth = difficultyMap[difficulty] || 2;
+            const depth = difficultyMap[parseInt(document.getElementById('difficulty').value)] || 2;
             document.getElementById('status').textContent = '电脑思考中...';
             
             const bestMove = findBestMove(depth);
             if (bestMove) {
                 const move = game.move(bestMove);
-                if (move.captured) {
+                if (move && move.captured) {
                     if (move.color === 'w') blackCaptured.push(move.captured);
                     else whiteCaptured.push(move.captured);
                     updateCapturedDisplay();
@@ -253,20 +227,18 @@
         }
 
         function updateCapturedDisplay() {
-            const imgPath = 'img/chesspieces/wikipedia/';
-            let blackHTML = blackCaptured.map(p => `<img src="${imgPath}b${pieceValueToImg[p]}.png" width="28">`).join('');
-            let whiteHTML = whiteCaptured.map(p => `<img src="${imgPath}w${pieceValueToImg[p]}.png" width="28">`).join('');
+            const path = 'img/chesspieces/wikipedia/';
+            const blackHTML = blackCaptured.map(p => `<img src="${path}b${pieceValueToImg[p]}.png" width="28" height="28">`).join('');
+            const whiteHTML = whiteCaptured.map(p => `<img src="${path}w${pieceValueToImg[p]}.png" width="28" height="28">`).join('');
             
             document.getElementById('blackCaptured').innerHTML = blackHTML || '—';
             document.getElementById('whiteCaptured').innerHTML = whiteHTML || '—';
         }
 
-        // minimax 相关函数（简化版）
+        // minimax 等核心函数（保持不变）
         function findBestMove(depth) {
-            let bestScore = -Infinity;
-            let bestMove = null;
+            let bestScore = -Infinity, bestMove = null;
             const moves = game.moves({verbose: true});
-            
             for (let move of moves) {
                 game.move(move);
                 const score = minimax(depth - 1, -Infinity, Infinity, false);
@@ -286,7 +258,7 @@
                 let maxEval = -Infinity;
                 for (let move of moves) {
                     game.move(move);
-                    const evalScore = minimax(depth - 1, alpha, beta, false);
+                    const evalScore = minimax(depth-1, alpha, beta, false);
                     game.undo();
                     maxEval = Math.max(maxEval, evalScore);
                     alpha = Math.max(alpha, evalScore);
@@ -297,7 +269,7 @@
                 let minEval = Infinity;
                 for (let move of moves) {
                     game.move(move);
-                    const evalScore = minimax(depth - 1, alpha, beta, true);
+                    const evalScore = minimax(depth-1, alpha, beta, true);
                     game.undo();
                     minEval = Math.min(minEval, evalScore);
                     beta = Math.min(beta, evalScore);
@@ -312,17 +284,11 @@
                 if (game.in_checkmate()) return game.turn() === 'w' ? -9999 : 9999;
                 return 0;
             }
-            const pieceValue = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+            const values = {p:100, n:320, b:330, r:500, q:900, k:20000};
             let score = 0;
-            const boardArray = game.board();
-            for (let row of boardArray) {
-                for (let piece of row) {
-                    if (piece) {
-                        const value = pieceValue[piece.type];
-                        score += piece.color === 'w' ? value : -value;
-                    }
-                }
-            }
+            game.board().flat().forEach(piece => {
+                if (piece) score += values[piece.type] * (piece.color === 'w' ? 1 : -1);
+            });
             return score + (Math.random() * 20 - 10);
         }
 
@@ -349,12 +315,12 @@
         }
 
         function updateStatus() {
-            let status = '';
-            if (game.in_checkmate()) status = '将死！' + (game.turn() === 'w' ? '黑' : '白') + '胜';
-            else if (game.in_draw()) status = '平局';
-            else if (game.in_check()) status = (game.turn() === 'w' ? '白' : '黑') + '方被将军';
-            else status = (game.turn() === playerColor ? '你的回合' : '电脑思考中');
-            document.getElementById('status').textContent = status;
+            let txt = '';
+            if (game.in_checkmate()) txt = '将死！' + (game.turn()==='w' ? '黑' : '白') + '胜';
+            else if (game.in_draw()) txt = '平局';
+            else if (game.in_check()) txt = (game.turn()==='w' ? '白' : '黑') + '方被将军';
+            else txt = (game.turn() === playerColor ? '你的回合' : '电脑思考中');
+            document.getElementById('status').textContent = txt;
         }
 
         function endGame() {
@@ -373,7 +339,7 @@
             initBoard();
         }
 
-        window.onload = initBoard;
+        window.onload = () => initBoard();
     </script>
 </body>
 </html>
