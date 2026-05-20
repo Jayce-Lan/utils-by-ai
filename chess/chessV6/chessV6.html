@@ -3,28 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>国际象棋 - 对战电脑</title>
-    <!-- <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script> -->
+    <title>国际象棋 - 离线版</title>
+    
+    <!-- 本地离线资源 -->
     <link rel="stylesheet" href="chessboard-1.0.0.min.css">
     <script src="jquery-3.6.0.min.js"></script>
     <script src="chess.min.js"></script>
     <script src="chessboard-1.0.0.min.js"></script>
+    
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; background: #f0f0f0; margin: 0; padding: 20px; }
-        #board { width: 480px; margin: 20px auto; }
-        .controls { margin: 15px auto; max-width: 500px; }
-        button, select, input { margin: 5px; padding: 8px 12px; font-size: 16px; }
-        .status { font-size: 18px; font-weight: bold; margin: 10px; }
-        .timers { display: flex; justify-content: space-around; font-size: 20px; font-weight: bold; margin: 10px; }
-        .timer { padding: 10px; background: #333; color: white; border-radius: 8px; min-width: 120px; }
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            background: #f0f0f0; 
+            margin: 0; 
+            padding: 20px; 
+        }
+        #board { 
+            width: 480px; 
+            margin: 20px auto; 
+            border: 2px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .timers { 
+            display: flex; 
+            justify-content: space-around; 
+            font-size: 20px; 
+            font-weight: bold; 
+            margin: 15px auto; 
+            max-width: 500px;
+        }
+        .timer { 
+            padding: 10px 20px; 
+            background: #333; 
+            color: white; 
+            border-radius: 8px; 
+            min-width: 140px; 
+        }
+        .controls { 
+            margin: 20px auto; 
+            max-width: 520px; 
+            background: #fff; 
+            padding: 15px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .captured {
+            margin: 15px auto;
+            max-width: 520px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 18px;
+        }
+        .captured-box {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #fff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            min-height: 36px;
+        }
+        button, select, input { 
+            margin: 5px; 
+            padding: 8px 12px; 
+            font-size: 16px; 
+        }
+        .status { 
+            font-size: 18px; 
+            font-weight: bold; 
+            margin: 12px; 
+        }
     </style>
 </head>
 <body>
-    <h1>国际象棋 vs 电脑</h1>
+    <h1>国际象棋 vs 电脑（离线版）</h1>
     
+    <div class="timers">
+        <div class="timer" id="blackTimer">黑: 10:00</div>
+        <div class="status" id="status">准备开始</div>
+        <div class="timer" id="whiteTimer">白: 10:00</div>
+    </div>
+    
+    <div id="board"></div>
+
+    <!-- 吃子显示 -->
+    <div class="captured">
+        <div>
+            <strong>黑方吃子：</strong>
+            <div class="captured-box" id="blackCaptured"></div>
+        </div>
+        <div>
+            <strong>白方吃子：</strong>
+            <div class="captured-box" id="whiteCaptured"></div>
+        </div>
+    </div>
+
+    <!-- 控制选项放在棋盘下方 -->
     <div class="controls">
         <label>你的颜色: 
             <select id="playerColor">
@@ -51,41 +128,51 @@
             </select>
         </label>
         
+        <br><br>
         <button onclick="startNewGame()">开始新游戏</button>
-        <button onclick="togglePause()">暂停/继续</button>
-        <button onclick="resetGame()">重置</button>
+        <button onclick="togglePause()">暂停 / 继续</button>
+        <button onclick="resetGame()">重置游戏</button>
     </div>
-    
-    <div class="timers">
-        <div class="timer" id="blackTimer">黑: 10:00</div>
-        <div class="status" id="status">准备开始</div>
-        <div class="timer" id="whiteTimer">白: 10:00</div>
-    </div>
-    
-    <div id="board"></div>
-    
-    <p>提示：拖拽棋子或点击起点→终点走棋</p>
 
     <script>
         let board, game, timerInterval;
         let playerColor = 'w';
-        let timeLeft = { w: 600, b: 600 }; // 秒
+        let timeLeft = { w: 600, b: 600 };
         let isPaused = false;
-        let currentTurnTimer;
+        let whiteCaptured = [];
+        let blackCaptured = [];
 
         const difficultyMap = {
             100: 1, 400: 1, 700: 2, 1000: 2,
             1300: 3, 1600: 3, 1900: 4, 2200: 4, 2500: 5
         };
 
+        const pieceValueToImg = { p: 'P', r: 'R', n: 'N', b: 'B', q: 'Q', k: 'K' };
+
         function initBoard() {
             const config = {
                 draggable: true,
-                position: 'start',
+                dropOffBoard: 'snapback',
+                sparePieces: false,
+                // pieceTheme: 'img/chesspieces/wikipedia/{piece}.png',
+                pieceTheme: 'img/chesspieces/wikipedia/{piece}.png',
                 onDrop: handleMove,
-                pieceTheme: 'img/chesspieces/wikipedia/{piece}.png'
+                onSnapEnd: onSnapEnd,
+                onDragStart: onDragStart
             };
             board = Chessboard('board', config);
+        }
+
+        function onDragStart(source, piece) {
+            if (isPaused || game.turn() !== playerColor) return false;
+            if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+                (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+                return false;
+            }
+        }
+
+        function onSnapEnd() {
+            board.position(game.fen());
         }
 
         function startNewGame() {
@@ -93,44 +180,51 @@
             playerColor = document.getElementById('playerColor').value;
             const minutes = parseInt(document.getElementById('timeLimit').value) || 10;
             timeLeft = { w: minutes * 60, b: minutes * 60 };
+            whiteCaptured = [];
+            blackCaptured = [];
             isPaused = false;
-            
+
+            updateCapturedDisplay();
             updateTimers();
             initBoard();
             
-            // 翻转棋盘（如果你执黑）
+            // 选择黑棋时翻转棋盘
             if (playerColor === 'b') {
                 board.flip();
             }
-            
+
             document.getElementById('status').textContent = '游戏开始 - ' + (playerColor === 'w' ? '你执白' : '你执黑');
             
             clearInterval(timerInterval);
             timerInterval = setInterval(tickTimer, 1000);
-            
-            // 如果你执黑，电脑先走
+
             if (playerColor === 'b') {
-                setTimeout(computerMove, 300);
+                setTimeout(computerMove, 400);
             }
         }
 
         function handleMove(source, target) {
             if (isPaused || game.turn() !== playerColor) return 'snapback';
-            
+
             const move = game.move({
                 from: source,
                 to: target,
-                promotion: 'q' // 默认升皇后
+                promotion: 'q'
             });
-            
+
             if (move === null) return 'snapback';
-            
+
+            if (move.captured) {
+                if (move.color === 'w') blackCaptured.push(move.captured);
+                else whiteCaptured.push(move.captured);
+                updateCapturedDisplay();
+            }
+
             updateStatus();
             updateTimers();
-            
-            // 电脑思考
+
             if (!game.game_over()) {
-                setTimeout(computerMove, 250);
+                setTimeout(computerMove, 300);
             } else {
                 endGame();
             }
@@ -142,22 +236,32 @@
             
             const difficulty = parseInt(document.getElementById('difficulty').value);
             const depth = difficultyMap[difficulty] || 2;
-            
             document.getElementById('status').textContent = '电脑思考中...';
             
-            // 简单 minimax
             const bestMove = findBestMove(depth);
-            
             if (bestMove) {
-                game.move(bestMove);
+                const move = game.move(bestMove);
+                if (move.captured) {
+                    if (move.color === 'w') blackCaptured.push(move.captured);
+                    else whiteCaptured.push(move.captured);
+                    updateCapturedDisplay();
+                }
                 board.position(game.fen());
                 updateStatus();
-                
                 if (game.game_over()) endGame();
             }
         }
 
-        // 极简 minimax + 随机评估
+        function updateCapturedDisplay() {
+            const imgPath = 'img/chesspieces/wikipedia/';
+            let blackHTML = blackCaptured.map(p => `<img src="${imgPath}b${pieceValueToImg[p]}.png" width="28">`).join('');
+            let whiteHTML = whiteCaptured.map(p => `<img src="${imgPath}w${pieceValueToImg[p]}.png" width="28">`).join('');
+            
+            document.getElementById('blackCaptured').innerHTML = blackHTML || '—';
+            document.getElementById('whiteCaptured').innerHTML = whiteHTML || '—';
+        }
+
+        // minimax 相关函数（简化版）
         function findBestMove(depth) {
             let bestScore = -Infinity;
             let bestMove = null;
@@ -167,7 +271,6 @@
                 game.move(move);
                 const score = minimax(depth - 1, -Infinity, Infinity, false);
                 game.undo();
-                
                 if (score > bestScore) {
                     bestScore = score;
                     bestMove = move;
@@ -177,20 +280,16 @@
         }
 
         function minimax(depth, alpha, beta, maximizing) {
-            if (depth === 0 || game.game_over()) {
-                return evaluateBoard();
-            }
-            
+            if (depth === 0 || game.game_over()) return evaluateBoard();
             const moves = game.moves();
-            
             if (maximizing) {
                 let maxEval = -Infinity;
                 for (let move of moves) {
                     game.move(move);
-                    const eval = minimax(depth - 1, alpha, beta, false);
+                    const evalScore = minimax(depth - 1, alpha, beta, false);
                     game.undo();
-                    maxEval = Math.max(maxEval, eval);
-                    alpha = Math.max(alpha, eval);
+                    maxEval = Math.max(maxEval, evalScore);
+                    alpha = Math.max(alpha, evalScore);
                     if (beta <= alpha) break;
                 }
                 return maxEval;
@@ -198,10 +297,10 @@
                 let minEval = Infinity;
                 for (let move of moves) {
                     game.move(move);
-                    const eval = minimax(depth - 1, alpha, beta, true);
+                    const evalScore = minimax(depth - 1, alpha, beta, true);
                     game.undo();
-                    minEval = Math.min(minEval, eval);
-                    beta = Math.min(beta, eval);
+                    minEval = Math.min(minEval, evalScore);
+                    beta = Math.min(beta, evalScore);
                     if (beta <= alpha) break;
                 }
                 return minEval;
@@ -210,17 +309,13 @@
 
         function evaluateBoard() {
             if (game.game_over()) {
-                if (game.in_checkmate()) {
-                    return game.turn() === 'w' ? -9999 : 9999;
-                }
-                return 0; // 平局
+                if (game.in_checkmate()) return game.turn() === 'w' ? -9999 : 9999;
+                return 0;
             }
-            
             const pieceValue = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
             let score = 0;
-            
-            const boardFen = game.board();
-            for (let row of boardFen) {
+            const boardArray = game.board();
+            for (let row of boardArray) {
                 for (let piece of row) {
                     if (piece) {
                         const value = pieceValue[piece.type];
@@ -228,16 +323,14 @@
                     }
                 }
             }
-            return score + (Math.random() * 20 - 10); // 增加随机性
+            return score + (Math.random() * 20 - 10);
         }
 
         function tickTimer() {
             if (isPaused || game.game_over()) return;
-            
             const turn = game.turn();
             timeLeft[turn]--;
             updateTimers();
-            
             if (timeLeft[turn] <= 0) {
                 clearInterval(timerInterval);
                 document.getElementById('status').textContent = (turn === 'w' ? '白' : '黑') + '方超时！';
@@ -257,15 +350,10 @@
 
         function updateStatus() {
             let status = '';
-            if (game.in_checkmate()) {
-                status = '将死！' + (game.turn() === 'w' ? '黑' : '白') + '胜';
-            } else if (game.in_draw()) {
-                status = '平局';
-            } else if (game.in_check()) {
-                status = (game.turn() === 'w' ? '白' : '黑') + '方被将军';
-            } else {
-                status = (game.turn() === 'w' ? '白' : '黑') + '方思考中';
-            }
+            if (game.in_checkmate()) status = '将死！' + (game.turn() === 'w' ? '黑' : '白') + '胜';
+            else if (game.in_draw()) status = '平局';
+            else if (game.in_check()) status = (game.turn() === 'w' ? '白' : '黑') + '方被将军';
+            else status = (game.turn() === playerColor ? '你的回合' : '电脑思考中');
             document.getElementById('status').textContent = status;
         }
 
@@ -276,7 +364,6 @@
 
         function togglePause() {
             isPaused = !isPaused;
-            const btnText = isPaused ? '继续' : '暂停';
             document.getElementById('status').textContent = isPaused ? '游戏已暂停' : '游戏继续';
         }
 
@@ -286,10 +373,7 @@
             initBoard();
         }
 
-        // 初始化
-        window.onload = function() {
-            initBoard();
-        };
+        window.onload = initBoard;
     </script>
 </body>
 </html>
