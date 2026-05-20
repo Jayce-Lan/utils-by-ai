@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>国际象棋 AI 对战</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+        body {
+            background: #1a202c;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+        .modal-content {
+            background: #fff;
+            color: #222;
+            padding: 24px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 420px;
+        }
+        .modal h3 {
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .setting-row {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .setting-row label {
+            font-weight: bold;
+            min-width: 70px;
+        }
+        .modal button {
+            width: 100%;
+            padding: 10px;
+            background: #2b85ff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+        .desc {
+            font-size:12px; color:#666; margin-top:4px;
+        }
+
+        #promoModal { display: none; }
+        .promo-options {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .promo-btn {
+            width: 50px; height: 50px;
+            font-size: 30px;
+            background: #eee;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .btn-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .btn-bar button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: #2d3748;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-bar button:active { background: #4a5568; }
+
+        .game-info {
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+        .info-box {
+            background: #2d3748;
+            padding: 6px 10px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        #stepEval {
+            margin: 6px 0;
+            font-size: 16px;
+            font-weight: bold;
+            min-height: 20px;
+            text-align: center;
+        }
+        .great { color: #ffd000; }
+        .good { color: #48bb78; }
+        .normal { color: #fff; }
+        .bad { color: #fc8181; }
+
+        .chess-wrapper {
+            display: flex;
+            align-items: center;
+            max-width: 400px;
+        }
+        .coord-left {
+            display: flex;
+            flex-direction: column;
+            color: #fff;
+            font-weight: bold;
+            margin-right: 6px;
+        }
+        .coord-left span {
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+        }
+        .board-container { display: flex; flex-direction: column; }
+        .chess-board {
+            display: grid;
+            grid-template-columns: repeat(8, 48px);
+            grid-template-rows: repeat(8, 48px);
+            border: 2px solid #777;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .coord-bottom {
+            display: flex;
+            color: #fff;
+            font-weight: bold;
+            margin-top: 4px;
+            margin-left: 20px;
+        }
+        .coord-bottom span {
+            width: 48px;
+            text-align: center;
+        }
+        .square {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .white { background: #f0d9b5; }
+        .black { background: #b58663; }
+        .selected { background: #ffd000 !important; }
+        .possible { background: #4caf5088 !important; }
+        .last-move { background: #71a9f7 !important; }
+
+        #status {
+            margin-top: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #ff5555;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="modal" id="settingModal">
+    <div class="modal-content">
+        <h3>游戏设置</h3>
+        <div class="setting-row">
+            <label>执子：</label>
+            <input type="radio" name="side" value="white" checked>白
+            <input type="radio" name="side" value="black">黑
+            <input type="radio" name="side" value="random">随机
+        </div>
+        <div class="setting-row">
+            <label>计时：</label>
+            <input type="number" id="setTime" value="10" min="1" max="60" style="width:60px">分钟
+        </div>
+        <div class="setting-row">
+            <label>AI难度：</label>
+            <select id="setDifficulty">
+                <option value="lv1">Lv1 完全随机</option>
+                <option value="lv2">Lv2 只会吃子</option>
+                <option value="lv3">Lv3 简单防守</option>
+                <option value="lv4">Lv4 常规走法</option>
+                <option value="lv5">Lv5 战术意识</option>
+                <option value="lv6">Lv6 计算两步</option>
+                <option value="lv7">Lv7 中级棋手</option>
+                <option value="lv8">Lv8 高级棋手</option>
+            </select>
+        </div>
+        <div class="desc" id="diffTip">完全随机走棋，适合熟悉规则</div>
+        
+        <button onclick="startGame()">开始对局</button>
+    </div>
+</div>
+
+<div class="modal" id="promoModal">
+    <div class="modal-content">
+        <h3>兵升变</h3>
+        <p>选择升变棋子：</p>
+        <div class="promo-options">
+            <button class="promo-btn" onclick="choosePromo('q')">♛</button>
+            <button class="promo-btn" onclick="choosePromo('r')">♜</button>
+            <button class="promo-btn" onclick="choosePromo('b')">♝</button>
+            <button class="promo-btn" onclick="choosePromo('n')">♞</button>
+        </div>
+    </div>
+</div>
+
+<div class="btn-bar">
+    <button id="pauseBtn">暂停</button>
+    <button id="restartBtn">重新开始</button>
+</div>
+
+<div class="game-info">
+    <div class="info-box">白方 <span id="wTime">10:00</span></div>
+    <div class="info-box">吃子：<span id="wCaptured">—</span></div>
+</div>
+<div class="game-info">
+    <div class="info-box">黑方 <span id="bTime">10:00</span></div>
+    <div class="info-box">吃子：<span id="bCaptured">—</span></div>
+</div>
+
+<div id="stepEval"></div>
+
+<div class="chess-wrapper">
+    <div class="coord-left" id="leftCoord"></div>
+    <div class="board-container">
+        <div class="chess-board" id="board"></div>
+        <div class="coord-bottom" id="bottomCoord"></div>
+    </div>
+</div>
+
+<div id="status"></div>
+
+<script>
+// 黑白棋子颜色对调：白方深色，黑方浅色
+const pieces = {
+    w: { r:'♜', n:'♞', b:'♝', q:'♛', k:'♚', p:'♟' },
+    b: { r:'♖', n:'♘', b:'♗', q:'♕', k:'♔', p:'♙' }
+};
+
+const diffDescriptions = {
+    lv1: "完全随机走棋，适合熟悉规则",
+    lv2: "只会优先吃子，无防守意识",
+    lv3: "会简单躲避危险，偶尔吃子",
+    lv4: "正常发展棋子，简单战术",
+    lv5: "有战术意识，会将军、抓子",
+    lv6: "可计算两步，会简单组合",
+    lv7: "中级棋手，稳定战术+防守",
+    lv8: "高级棋手，局面判断+深度计算"
+};
+
+let board = [
+    ['br','bn','bb','bq','bk','bb','bn','br'],
+    ['bp','bp','bp','bp','bp','bp','bp','bp'],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['wp','wp','wp','wp','wp','wp','wp','wp'],
+    ['wr','wn','wb','wq','wk','wb','wn','wr']
+];
+
+let selected = null;
+let userSide = 'white';
+let current = 'white';
+let gameActive = false;
+let gamePaused = false;
+let gameOver = false;
+let flipBoard = false;
+let wTime = 600, bTime = 600;
+let timer = null;
+let aiLevel = 'lv1';
+let lastMove = null;
+let lastAIMove = null;
+let wCap = [], bCap = [];
+let promoData = null;
+let hasMoved = { wk:false, wrh:false, wra:false, bk:false, brh:false, bra:false };
+
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const stepEvalEl = document.getElementById('stepEval');
+const pauseBtn = document.getElementById('pauseBtn');
+const restartBtn = document.getElementById('restartBtn');
+const diffTip = document.getElementById('diffTip');
+const setDifficulty = document.getElementById('setDifficulty');
+const leftCoordEl = document.getElementById('leftCoord');
+const bottomCoordEl = document.getElementById('bottomCoord');
+
+setDifficulty.onchange = () => {
+    diffTip.innerText = diffDescriptions[setDifficulty.value];
+};
+diffTip.innerText = diffDescriptions.lv1;
+
+pauseBtn.onclick = () => {
+    if(!gameActive || gameOver) return;
+    gamePaused = !gamePaused;
+    pauseBtn.innerText = gamePaused ? '继续' : '暂停';
+    if(gamePaused) clearInterval(timer);
+    else startTimer();
+};
+
+restartBtn.onclick = () => {
+    clearInterval(timer);
+    document.getElementById('settingModal').style.display = 'flex';
+    pauseBtn.innerText = '暂停';
+    stepEvalEl.innerText = '';
+    wCap = []; bCap = [];
+    document.getElementById('wCaptured').innerText = '—';
+    document.getElementById('bCaptured').innerText = '—';
+};
+
+function evaluateMove(cap, isCheck, isMate, isCastle) {
+    if(isMate) return { text: '🔥 妙手！将杀', cls: 'great' };
+    if(isCastle) return { text: '👍 好棋：王车易位', cls: 'good' };
+    if(isCheck) return { text: '👍 好棋：将军', cls: 'good' };
+    if(cap) return { text: '👍 好棋：吃子', cls: 'good' };
+    if(Math.random() < 0.12) return { text: '⚠️ 漏招', cls: 'bad' };
+    return { text: '⏱️ 一般', cls: 'normal' };
+}
+
+function updateCoords() {
+    const ranks = flipBoard ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+    const files = flipBoard ? ['h','g','f','e','d','c','b','a'] : ['a','b','c','d','e','f','g','h'];
+    leftCoordEl.innerHTML = '';
+    ranks.forEach(r => {
+        const sp = document.createElement('span');
+        sp.textContent = r;
+        leftCoordEl.appendChild(sp);
+    });
+    bottomCoordEl.innerHTML = '';
+    files.forEach(f => {
+        const sp = document.createElement('span');
+        sp.textContent = f;
+        bottomCoordEl.appendChild(sp);
+    });
+}
+
+function renderBoard(){
+    boardEl.innerHTML = '';
+    updateCoords();
+    let rows = flipBoard ? [...board].reverse() : board;
+    for(let r=0;r<8;r++){
+        let row = rows[r];
+        let cols = flipBoard ? [...row].reverse() : row;
+        for(let c=0;c<8;c++){
+            const d = document.createElement('div');
+            d.className = `square ${(r+c)%2===0?'white':'black'}`;
+            const realR = flipBoard ? 7-r : r;
+            const realC = flipBoard ? 7-c : c;
+            d.dataset.r = realR;
+            d.dataset.c = realC;
+            const p = cols[c];
+            if(p){ d.innerText = pieces[p[0]][p[1]]; }
+            if(lastMove){
+                const {f,t} = lastMove;
+                if((realR===f.r&&realC===f.c)||(realR===t.r&&realC===t.c)) d.classList.add('last-move');
+            }
+            d.addEventListener('click',()=>clickSquare(realR,realC));
+            boardEl.appendChild(d);
+        }
+    }
+    updateCaptured();
+}
+
+// 核心修复：王车易位触发逻辑完全重写
+function clickSquare(r,c){
+    if(!gameActive || gamePaused || current!=userSide || gameOver) return;
+    const p = board[r][c];
+
+    // 先处理王车易位：点击目标格直接触发
+    if(selected && selected.p === userSide[0]+'k'){
+        const cast = getValidCastling(userSide[0]);
+        if(userSide === 'white'){
+            // 白王短易位：e1(7,4) → g1(7,6)
+            if(r === 7 && c === 6 && cast.short){
+                doCastle('short','white');
+                return;
+            }
+            // 白王长易位：e1(7,4) → c1(7,2)
+            if(r === 7 && c === 2 && cast.long){
+                doCastle('long','white');
+                return;
+            }
+        } else {
+            // 黑王短易位：e8(0,4) → g8(0,6)
+            if(r === 0 && c === 6 && cast.short){
+                doCastle('short','black');
+                return;
+            }
+            // 黑王长易位：e8(0,4) → c8(0,2)
+            if(r === 0 && c === 2 && cast.long){
+                doCastle('long','black');
+                return;
+            }
+        }
+    }
+
+    // 选择自己的棋子
+    if(p && p.startsWith(userSide[0])){
+        clearSelect();
+        selected = {r,c,p};
+        document.querySelector(`[data-r="${r}"][data-c="${c}"]`).classList.add('selected');
+        showMoves(r,c);
+        return;
+    }
+
+    // 正常走子
+    if(selected && validMove(selected.r,selected.c,r,c)){
+        const tempBoard = JSON.parse(JSON.stringify(board));
+        tempBoard[r][c] = tempBoard[selected.r][selected.c];
+        tempBoard[selected.r][selected.c] = '';
+        const kingPos = findKingInBoard(tempBoard, userSide[0]);
+        if(kingPos && isSquareAttackedInBoard(tempBoard, kingPos.r, kingPos.c, userSide[0])){
+            statusEl.innerText = "⚠️ 必须应将！";
+            return;
+        }
+
+        const target = board[r][c];
+        if(target && target.endsWith('k')) {
+            move(selected.r,selected.c,r,c);
+            lastMove = {f:{r:selected.r,c:selected.c}, t:{r,c}};
+            renderBoard();
+            end(current == 'white' ? '白方获胜' : '黑方获胜');
+            return;
+        }
+
+        const cap = target;
+        move(selected.r,selected.c,r,c);
+        lastMove = {f:{r:selected.r,c:selected.c}, t:{r,c}};
+        
+        const chk = isCheck({fR:selected.r,fC:selected.c,tR:r,tC:c});
+        const mate = isMate();
+        const e = evaluateMove(cap, chk, mate, false);
+        stepEvalEl.innerText=e.text; stepEvalEl.className=e.cls;
+
+        if(mate) {
+            end(current == 'white' ? '白方将杀获胜' : '黑方将杀获胜');
+            return;
+        }
+
+        if(selected.p[1] === 'p' && ((userSide === 'white' && r === 0) || (userSide === 'black' && r === 7))){
+            promoData = {r,c,color:userSide[0]};
+            document.getElementById('promoModal').style.display = 'flex';
+            return;
+        }
+        clearSelect();
+        renderBoard();
+        next();
+        setTimeout(aiMove, 700);
+    }
+}
+
+// 王车易位执行：车自动移动，完全符合规则
+function doCastle(type, color){
+    if(color === 'white'){
+        if(type === 'short'){
+            // 白短易位：王e1→g1，车h1→f1
+            move(7,4,7,6);
+            move(7,7,7,5);
+            lastMove = {f:{r:7,c:4}, t:{r:7,c:6}};
+        } else {
+            // 白长易位：王e1→c1，车a1→d1
+            move(7,4,7,2);
+            move(7,0,7,3);
+            lastMove = {f:{r:7,c:4}, t:{r:7,c:2}};
+        }
+    } else {
+        if(type === 'short'){
+            // 黑短易位：王e8→g8，车h8→f8
+            move(0,4,0,6);
+            move(0,7,0,5);
+            lastMove = {f:{r:0,c:4}, t:{r:0,c:6}};
+        } else {
+            // 黑长易位：王e8→c8，车a8→d8
+            move(0,4,0,2);
+            move(0,0,0,3);
+            lastMove = {f:{r:0,c:4}, t:{r:0,c:2}};
+        }
+    }
+    // 标记王和车已移动，防止重复易位
+    if(color === 'white'){ hasMoved.wk = true; hasMoved.wrh = true; hasMoved.wra = true; }
+    else { hasMoved.bk = true; hasMoved.brh = true; hasMoved.bra = true; }
+    const e = evaluateMove(false, false, false, true);
+    stepEvalEl.innerText = e.text; stepEvalEl.className = e.cls;
+    renderBoard();
+    clearSelect();
+    next();
+    setTimeout(aiMove, 700);
+}
+
+function move(fR,fC,tR,tC){
+    const cap = board[tR][tC];
+    if(cap){
+        if(cap.startsWith('w')) bCap.push(cap);
+        else wCap.push(cap);
+    }
+    board[tR][tC] = board[fR][fC];
+    board[fR][fC] = '';
+    // 标记棋子移动状态
+    const piece = board[tR][tC];
+    if(piece === 'wk') hasMoved.wk = true;
+    if(piece === 'wr' && fR === 7 && fC === 7) hasMoved.wrh = true;
+    if(piece === 'wr' && fR === 7 && fC === 0) hasMoved.wra = true;
+    if(piece === 'bk') hasMoved.bk = true;
+    if(piece === 'br' && fR === 0 && fC === 7) hasMoved.brh = true;
+    if(piece === 'br' && fR === 0 && fC === 0) hasMoved.bra = true;
+}
+
+function choosePromo(type){
+    if(!promoData) return;
+    const {r,c,color} = promoData;
+    board[r][c] = color + type;
+    document.getElementById('promoModal').style.display = 'none';
+    renderBoard();
+    clearSelect();
+    next();
+    setTimeout(aiMove,700);
+    promoData = null;
+}
+
+function next(){
+    current = current === 'white' ? 'black' : 'white';
+    statusEl.innerText = current === 'white' ? '白方回合' : '黑方回合';
+    startTimer();
+}
+
+function aiMove(){
+    const aiSide = userSide === 'white' ? 'black' : 'white';
+    if(!gameActive || current !== aiSide || gamePaused || gameOver) return;
+    const aiColor = current === 'white' ? 'w' : 'b';
+    const allMoves = getAllLegalMoves(aiColor);
+    if(allMoves.length === 0){ end(userSide === 'white' ? '白方胜' : '黑方胜'); return; }
+
+    const isRepeat = (m) => lastAIMove && m.fR === lastAIMove.tR && m.fC === lastAIMove.tC && m.tR === lastAIMove.fR && m.tC === lastAIMove.fC;
+    const validMoves = allMoves.filter(m => !isRepeat(m));
+    const candidates = validMoves.length ? validMoves : allMoves;
+
+    const kingMove = candidates.find(m => board[m.tR][m.tC] && board[m.tR][m.tC].endsWith('k'));
+    if(kingMove){
+        move(kingMove.fR,kingMove.fC,kingMove.tR,kingMove.tC);
+        lastAIMove = kingMove;
+        lastMove = {f:{r:kingMove.fR,c:kingMove.fC}, t:{r:kingMove.tR,c:kingMove.tC}};
+        renderBoard();
+        end(userSide === 'white' ? '黑方吃王获胜' : '白方吃王获胜');
+        return;
+    }
+
+    const checkMoves = candidates.filter(m => isCheck(m));
+    const mateMoves = checkMoves.filter(m => isMate());
+    const capMoves = candidates.filter(m => board[m.tR][m.tC]);
+    const safeMoves = candidates.filter(m => !isSquareAttacked(m.tR,m.tC,aiColor));
+
+    let bestMove = null;
+    switch(aiLevel){
+        case 'lv1': bestMove = candidates[Math.floor(Math.random()*candidates.length)|0]; break;
+        case 'lv2': bestMove = capMoves.length ? capMoves[Math.floor(Math.random()*capMoves.length)|0] : candidates[Math.floor(Math.random()*candidates.length)|0]; break;
+        case 'lv3': bestMove = safeMoves.length ? safeMoves[Math.floor(Math.random()*safeMoves.length)|0] : candidates[Math.floor(Math.random()*candidates.length)|0]; break;
+        case 'lv4': bestMove = capMoves.length ? capMoves[0] : safeMoves[0] || candidates[0]; break;
+        case 'lv5': bestMove = checkMoves.length ? checkMoves[0] : capMoves[0] || safeMoves[0] || candidates[0]; break;
+        case 'lv6': bestMove = mateMoves.length ? mateMoves[0] : checkMoves[0] || capMoves[0] || safeMoves[0]; break;
+        case 'lv7': bestMove = mateMoves.length ? mateMoves[0] : checkMoves[0] || getBestPositional(candidates, aiColor); break;
+        case 'lv8': bestMove = mateMoves.length ? mateMoves[0] : getBestPositional(candidates, aiColor); break;
+    }
+
+    move(bestMove.fR, bestMove.fC, bestMove.tR, bestMove.tC);
+    lastAIMove = bestMove;
+    lastMove = {f:{r:bestMove.fR,c:bestMove.fC}, t:{r:bestMove.tR,c:bestMove.tC}};
+
+    if(board[bestMove.tR][bestMove.tC] === aiColor+'p' && (aiColor==='w'?bestMove.tR===0:bestMove.tR===7))
+        board[bestMove.tR][bestMove.tC] = aiColor+'q';
+
+    if(isMate()) {
+        renderBoard();
+        end(userSide === 'white' ? '黑方将杀获胜' : '白方将杀获胜');
+        return;
+    }
+
+    renderBoard();
+    next();
+}
+
+function getBestPositional(moves, col){
+    const score = m => {
+        let s = 0;
+        const t = board[m.tR][m.tC];
+        if(t) s += {p:1,n:3,b:3,r:5,q:9}[t[1]]||0;
+        if(isCheck(m)) s+=3;
+        if(m.tR >= 2 && m.tR <=5 && m.tC >=2 && m.tC <=5) s+=1;
+        return s;
+    };
+    return moves.sort((a,b)=>score(b)-score(a))[0];
+}
+
+function clearSelect(){
+    selected = null;
+    document.querySelectorAll('.selected,.possible').forEach(e=>e.classList.remove('selected','possible'));
+}
+
+function showMoves(r,c){
+    const moves = getMoves(r,c);
+    const p = board[r][c];
+    // 给王车易位添加可走提示
+    if(p === 'wk' && !hasMoved.wk){
+        const cast = getValidCastling('w');
+        if(cast.short) moves.push([7,6]);
+        if(cast.long) moves.push([7,2]);
+    }
+    if(p === 'bk' && !hasMoved.bk){
+        const cast = getValidCastling('b');
+        if(cast.short) moves.push([0,6]);
+        if(cast.long) moves.push([0,2]);
+    }
+    moves.forEach(([nr,nc])=>{
+        const sq = document.querySelector(`[data-r="${nr}"][data-c="${nc}"]`);
+        if(sq) sq.classList.add('possible');
+    });
+}
+
+function validMove(fR,fC,tR,tC){
+    return getMoves(fR,fC).some(([r,c])=>r===tR&&c===tC);
+}
+
+function formatTime(s){
+    const m = Math.floor(s/60);
+    const sec = s%60;
+    return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+function updateCaptured(){
+    document.getElementById('wCaptured').innerText = wCap.map(p=>pieces[p[0]][p[1]]).join('')||'—';
+    document.getElementById('bCaptured').innerText = bCap.map(p=>pieces[p[0]][p[1]]).join('')||'—';
+}
+
+function startTimer(){
+    clearInterval(timer);
+    if(gamePaused || gameOver) return;
+    timer = setInterval(()=>{
+        if(current === 'white') wTime--; else bTime--;
+        document.getElementById('wTime').innerText = formatTime(wTime);
+        document.getElementById('bTime').innerText = formatTime(bTime);
+        if(wTime <= 0 || bTime <= 0){
+            clearInterval(timer);
+            end(wTime <= 0 ? '时间到，黑方胜' : '时间到，白方胜');
+        }
+    }, 1000);
+}
+
+function end(msg){
+    gameActive = false;
+    gameOver = true;
+    clearInterval(timer);
+    statusEl.innerText = msg;
+}
+
+function startGame(){
+    document.getElementById('settingModal').style.display = 'none';
+    reset();
+    const s = document.querySelector('input[name="side"]:checked').value;
+    userSide = s === 'random' ? (Math.random()<0.5?'white':'black') : s;
+    flipBoard = userSide === 'black';
+    wTime = parseInt(document.getElementById('setTime').value)*60;
+    bTime = wTime;
+    aiLevel = document.getElementById('setDifficulty').value;
+    gameActive = true;
+    gamePaused = false;
+    gameOver = false;
+    document.getElementById('wTime').innerText = formatTime(wTime);
+    document.getElementById('bTime').innerText = formatTime(bTime);
+    statusEl.innerText = `你执${userSide === 'white' ? '白' : '黑'}，开始`;
+    renderBoard();
+    if(userSide === 'black') setTimeout(aiMove, 800);
+    startTimer();
+}
+
+function reset(){
+    board = [
+        ['br','bn','bb','bq','bk','bb','bn','br'],
+        ['bp','bp','bp','bp','bp','bp','bp','bp'],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['wp','wp','wp','wp','wp','wp','wp','wp'],
+        ['wr','wn','wb','wq','wk','wb','wn','wr']
+    ];
+    clearInterval(timer);
+    selected = null; lastMove = null; lastAIMove = null; promoData = null;
+    current = 'white'; gameActive = false; gamePaused = false; gameOver = false;
+    flipBoard = false;
+    wCap = []; bCap = [];
+    hasMoved = { wk:false, wrh:false, wra:false, bk:false, brh:false, bra:false };
+    statusEl.innerText = '';
+    stepEvalEl.innerText = '';
+}
+
+function getMoves(r,c){
+    const p = board[r][c];
+    if(!p) return [];
+    const res = [];
+    const col = p[0];
+    const t = p[1];
+
+    if(t === 'p'){
+        const forward = col === 'w' ? -1 : 1;
+        if(board[r+forward] && board[r+forward][c] === ''){
+            res.push([r+forward, c]);
+            if((col === 'w' && r === 6 || col === 'b' && r === 1) && board[r+2*forward] && board[r+2*forward][c] === ''){
+                res.push([r+2*forward, c]);
+            }
+        }
+        for(const [dr,dc] of [[forward,-1],[forward,1]]){
+            const nr = r+dr, nc = c+dc;
+            if(nr>=0&&nr<8&&nc>=0&&nc<8&&board[nr][nc]&&board[nr][nc][0]!==col){
+                res.push([nr,nc]);
+            }
+        }
+        return res;
+    }
+
+    const dirs = {
+        n: [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]],
+        k: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]],
+        r: [[-1,0],[1,0],[0,-1],[0,1]],
+        b: [[-1,-1],[-1,1],[1,-1],[1,1]],
+        q: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]
+    };
+
+    if(t === 'n' || t === 'k'){
+        for(const [dr,dc] of dirs[t]){
+            const nr = r+dr, nc = c+dc;
+            if(nr>=0&&nr<8&&nc>=0&&nc<8){
+                const cp = board[nr][nc];
+                if(!cp || cp[0] !== col) res.push([nr,nc]);
+            }
+        }
+        return res;
+    }
+
+    for(const [dr,dc] of dirs[t]){
+        let nr = r+dr, nc = c+dc;
+        while(nr>=0&&nr<8&&nc>=0&&nc<8){
+            const cp = board[nr][nc];
+            if(!cp){
+                res.push([nr,nc]);
+            } else {
+                if(cp[0] !== col) res.push([nr,nc]);
+                break;
+            }
+            nr += dr; nc += dc;
+        }
+    }
+    return res;
+}
+
+// 王车易位条件严格校验
+function getValidCastling(col){
+    let s = false, l = false;
+    if(col === 'w'){
+        // 白方易位条件：王/车未动、中间无子、王不被将军、路径不被攻击
+        if(!hasMoved.wk && !hasMoved.wrh && !board[7][5] && !board[7][6]
+            && !isInCheck('w') && !isSquareAttacked(7,5,'w') && !isSquareAttacked(7,6,'w')) s = true;
+        if(!hasMoved.wk && !hasMoved.wra && !board[7][1] && !board[7][2] && !board[7][3]
+            && !isInCheck('w') && !isSquareAttacked(7,2,'w') && !isSquareAttacked(7,3,'w')) l = true;
+    } else {
+        // 黑方易位条件
+        if(!hasMoved.bk && !hasMoved.brh && !board[0][5] && !board[0][6]
+            && !isInCheck('b') && !isSquareAttacked(0,5,'b') && !isSquareAttacked(0,6,'b')) s = true;
+        if(!hasMoved.bk && !hasMoved.bra && !board[0][1] && !board[0][2] && !board[0][3]
+            && !isInCheck('b') && !isSquareAttacked(0,2,'b') && !isSquareAttacked(0,3,'b')) l = true;
+    }
+    return {short:s, long:l};
+}
+
+function isInCheck(col){
+    const k = findKing(col);
+    return k && isSquareAttacked(k.r, k.c, col);
+}
+
+function isSquareAttacked(r,c,col){
+    for(let nr=0;nr<8;nr++){
+        for(let nc=0;nc<8;nc++){
+            const p = board[nr][nc];
+            if(!p || p[0] === col) continue;
+            const moves = getMoves(nr,nc);
+            if(moves.some(([x,y])=>x===r&&y===c)) return true;
+        }
+    }
+    return false;
+}
+
+function getAllLegalMoves(col){
+    const all = getAllMoves(col);
+    return all.filter(m => {
+        const temp = JSON.parse(JSON.stringify(board));
+        temp[m.tR][m.tC] = temp[m.fR][m.fC];
+        temp[m.fR][m.fC] = '';
+        const k = findKingInBoard(temp, col);
+        return !k || !isSquareAttackedInBoard(temp, k.r, k.c, col);
+    });
+}
+
+function getAllMoves(col){
+    const res = [];
+    for(let r=0;r<8;r++){
+        for(let c=0;c<8;c++){
+            const p = board[r][c];
+            if(!p || p[0] !== col) continue;
+            const moves = getMoves(r,c);
+            for(const [tr,tc] of moves) res.push({fR:r,fC:c,tR:tr,tC:tc});
+        }
+    }
+    return res;
+}
+
+function isCheck(m){
+    const t = board[m.tR][m.tC];
+    board[m.tR][m.tC] = board[m.fR][m.fC];
+    board[m.fR][m.fC] = '';
+    const chk = isInCheck('w');
+    board[m.fR][m.fC] = board[m.tR][m.tC];
+    board[m.tR][m.tC] = t;
+    return chk;
+}
+
+function isMate(){
+    const oppo = current == 'white' ? 'b' : 'w';
+    if(!isInCheck(oppo)) return false;
+    return getAllLegalMoves(oppo).length === 0;
+}
+
+function findKing(col){
+    const target = col + 'k';
+    for(let r=0;r<8;r++){
+        for(let c=0;c<8;c++){
+            if(board[r][c] === target) return {r,c};
+        }
+    }
+    return null;
+}
+
+function findKingInBoard(b, col){
+    const t = col + 'k';
+    for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(b[r][c] === t) return {r,c};
+    return null;
+}
+
+function isSquareAttackedInBoard(b, r, c, col){
+    for(let nr=0;nr<8;nr++){
+        for(let nc=0;nc<8;nc++){
+            const p = b[nr][nc];
+            if(!p || p[0] === col) continue;
+            const ms = getMovesInBoard(b, nr, nc);
+            if(ms.some(([x,y])=>x===r&&y===c)) return true;
+        }
+    }
+    return false;
+}
+
+function getMovesInBoard(b, r, c){
+    const p = b[r][c];
+    if(!p) return [];
+    const res = [];
+    const col = p[0];
+    const t = p[1];
+    if(t === 'p'){
+        const f = col === 'w' ? -1 : 1;
+        if(b[r+f] && b[r+f][c] === '') res.push([r+f,c]);
+        for(const [dr,dc] of [[f,-1],[f,1]]){
+            const nr = r+dr, nc = c+dc;
+            if(nr>=0&&nr<8&&nc>=0&&nc<8&&b[nr][nc]&&b[nr][nc][0]!==col) res.push([nr,nc]);
+        }
+        return res;
+    }
+    const dirs = {
+        n:[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]],
+        k:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]],
+        r:[[-1,0],[1,0],[0,-1],[0,1]],
+        b:[[-1,-1],[-1,1],[1,-1],[1,1]],
+        q:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]
+    };
+    if(t === 'n' || t === 'k'){
+        for(const [dr,dc] of dirs[t]){
+            const nr = r+dr, nc = c+dc;
+            if(nr>=0&&nr<8&&nc>=0&&nc<8&&(!b[nr][nc]||b[nr][nc][0]!==col)) res.push([nr,nc]);
+        }
+        return res;
+    }
+    for(const [dr,dc] of dirs[t]){
+        let nr = r+dr, nc = c+dc;
+        while(nr>=0&&nr<8&&nc>=0&&nc<8){
+            const cp = b[nr][nc];
+            if(!cp) res.push([nr,nc]);
+            else{
+                if(cp[0]!==col) res.push([nr,nc]);
+                break;
+            }
+            nr+=dr; nc+=dc;
+        }
+    }
+    return res;
+}
+
+renderBoard();
+</script>
+</body>
+</html>

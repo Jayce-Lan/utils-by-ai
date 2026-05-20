@@ -4,8 +4,6 @@
 
 本地存储了一些个人使用的小想法、小工具、小游戏；代码基本由ai实现，主要是前端代码，整合成HTML后便于在xcode上直接打包运行成iOS可以使用的工具
 
-
-
 ##### 目录
 
 - chess
@@ -15,3 +13,9 @@
   - `chessV2.html` ：修复版，黑白方均有吃子显示，`@power by doubao.com`
   
   - `chessV3.html` ：终极版，在对局结束后有对局分析`@power by doubao.com`
+  
+  - `chessV4.html` ：新的版本，可以难度提升，优化界面`@power by doubao.com`
+  
+  - `chessV5.html` ：新的版本，可以难度提升，优化界面`@power by grok`
+  
+  - `chessV5.html` ：新的版本，可以难度提升，优化界面，离线版本`@power by grok`
